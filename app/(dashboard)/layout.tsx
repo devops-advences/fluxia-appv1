@@ -15,37 +15,58 @@ type UserInfo = {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
     const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session } } = await supabase.auth.getSession()
 
-      if (!user) {
+      if (!session?.user) {
         router.push('/login')
         return
       }
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('user_data')
-        .select('role, first_name, last_name, firm:firm_id(name, country_code)')
-        .eq('id', user.id)
+        .select('role, first_name, last_name, firm_id')
+        .eq('id', session.user.id)
         .single()
 
-      if (!data) { router.push('/login'); return }
-      if (data.role === 'customer') { router.push('/portail'); return }
+      if (error || !data) {
+        setReady(true)
+        return
+      }
 
-      const firm = (Array.isArray(data.firm) ? data.firm[0] : data.firm) as { name: string; country_code: string } | null
+      if (data.role === 'customer') {
+        router.push('/portail')
+        return
+      }
+
+      let firmName = ''
+      let countryCode = 'FR'
+
+      if (data.firm_id) {
+        const { data: firm } = await supabase
+          .from('firm')
+          .select('name, country_code')
+          .eq('id', data.firm_id)
+          .single()
+
+        firmName = firm?.name ?? ''
+        countryCode = firm?.country_code ?? 'FR'
+      }
 
       setUserInfo({
-        firmName: firm?.name ?? '',
-        countryCode: firm?.country_code ?? 'FR',
+        firmName,
+        countryCode,
         userName: `${data.first_name} ${data.last_name}`,
       })
+      setReady(true)
     }
     load()
   }, [router])
 
-  if (!userInfo) {
+  if (!ready || !userInfo) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
         <div className="w-5 h-5 border-2 border-[#1D4ED8] border-t-transparent rounded-full animate-spin" />
