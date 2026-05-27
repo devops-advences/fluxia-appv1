@@ -15,13 +15,10 @@ type UserInfo = {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
-  const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    const load = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-
-      if (!session?.user) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!session) {
         router.push('/login')
         return
       }
@@ -52,7 +49,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           .select('name, country_code')
           .eq('id', data.firm_id)
           .single()
-
         firmName = firm?.name ?? ''
         countryCode = firm?.country_code ?? 'FR'
       }
@@ -62,12 +58,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         countryCode,
         userName: `${data.first_name} ${data.last_name}`,
       })
-      setReady(true)
-    }
-    load()
+    })
+
+    return () => subscription.unsubscribe()
   }, [router])
 
-  if (!ready || !userInfo) {
+  if (!userInfo) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
         <div className="w-5 h-5 border-2 border-[#1D4ED8] border-t-transparent rounded-full animate-spin" />
