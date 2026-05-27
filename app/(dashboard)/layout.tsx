@@ -17,7 +17,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    let active = true
+
+    async function loadUser() {
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (!active) return
+
       if (!session) {
         router.push('/login')
         return
@@ -29,14 +35,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         .eq('id', session.user.id)
         .single()
 
+      if (!active) return
+
       if (error || !data) {
-        await supabase.auth.signOut()
         router.push('/login')
         return
       }
 
       if (data.role === 'customer') {
-        router.push('/portail')
+        router.push('/mes-taches')
         return
       }
 
@@ -53,14 +60,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         countryCode = firm?.country_code ?? 'FR'
       }
 
+      if (!active) return
       setUserInfo({
         firmName,
         countryCode,
         userName: `${data.first_name} ${data.last_name}`,
       })
+    }
+
+    loadUser()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        router.push('/login')
+      }
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
   }, [router])
 
   if (!userInfo) {

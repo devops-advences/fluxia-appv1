@@ -31,7 +31,7 @@ export default function LoginPage() {
       .single()
 
     if (userData?.role === 'customer') {
-      router.push('/portail')
+      router.push('/mes-taches')
     } else {
       router.push('/dashboard')
     }
@@ -88,6 +88,10 @@ export default function LoginPage() {
             {loading ? 'Connexion...' : 'Se connecter'}
           </button>
         </form>
+        <p className="text-xs text-[#94A3B8] text-center mt-5">
+          Pas encore de compte ?{' '}
+          <a href="/register" className="text-[#1D4ED8] font-medium hover:underline">Créer un cabinet</a>
+        </p>
       </div>
     </div>
   )

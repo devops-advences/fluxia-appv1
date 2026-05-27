@@ -45,8 +45,9 @@ lib/
 - RLS Supabase obligatoire sur chaque table
 - ENUM `user_role` : `firm` / `customer` / `master`
 
-## Règles de collaboration
-- Ne jamais éditer, commiter ou pousser sans un "Go" explicite
+## Règles de collaboration — PRIORITÉ ABSOLUE
+- **UNE QUESTION ≠ UNE DEMANDE D'IMPLÉMENTATION.** Si l'utilisateur pose une question, répondre uniquement. Ne rien coder.
+- Ne jamais éditer, commiter ou pousser sans un "Go", "Ok", "Lance" ou confirmation explicite
 - Une feature à la fois
 - Toujours lire un fichier avant de le modifier
 - Ne jamais créer de fichiers inutiles (README, docs non demandés)
@@ -55,6 +56,20 @@ lib/
 - `id` → réservé aux clés primaires internes (UUID)
 - `ref` → pour les identifiants externes (ex: `tax_ref_main`, `tax_ref_vat`)
 - Ne jamais utiliser `_id` pour un identifiant externe
+
+## Supabase — RLS obligatoire
+- Toute nouvelle table = `ALTER TABLE x ENABLE ROW LEVEL SECURITY` + policies dans la même migration
+- Sans policy, PostgREST retourne `[]` (pas d'erreur) même si les données existent — identique à une table vide
+- En cas de 406 ou `[]` inexpliqué : vérifier les policies RLS en premier, avant tout autre diagnostic
+- Vérifier les policies avec curl + token JWT valide, pas juste via le dashboard Supabase
+
+## Nomenclature — URLs
+- URLs en anglais partout : `/login`, `/register`, `/dashboard`, `/clients`, `/taches`, etc.
+- Le contenu affiché à l'écran reste en français
+
+## UX — Formulaires
+- Les formulaires de création et d'édition sont identiques (mêmes champs, même layout, mêmes sections)
+- Pas de form "court" à la création suivi d'un form "long" en édition — une seule UX cohérente
 
 ## Ce qu'on ne fait PAS
 - Pas de mock de la base de données pour les tests

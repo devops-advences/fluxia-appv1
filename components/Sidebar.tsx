@@ -24,7 +24,7 @@ const NAV = [
     section: 'GESTION',
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-      { label: 'Suivi tâches clients', href: '/taches', icon: CheckSquare },
+      { label: 'Tâches récurrentes', href: '/taches', icon: CheckSquare },
     ],
   },
   {
