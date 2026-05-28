@@ -85,7 +85,7 @@ export default function DocumentsPage() {
 
   const callApi = useCallback(async (id: string, body: Record<string, string | null>) => {
     const { data: { session } } = await supabase.auth.getSession()
-    const res = await fetch(`/api/dashboard/documents/${id}`, {
+    const res = await fetch(`/api/firm/documents/${id}`, {
       method: 'PATCH',
       headers: { 'Authorization': `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

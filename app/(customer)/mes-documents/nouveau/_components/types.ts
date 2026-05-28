@@ -1,3 +1,5 @@
+import type { PDFDocumentProxy } from 'pdfjs-dist'
+
 export type FileKind = 'pdf' | 'image' | 'table' | 'doc'
 
 export function getFileKind(file: File): FileKind {
@@ -21,6 +23,8 @@ export type LoadedFile = {
   name: string
   fileKind: FileKind
   pageCount: number
+  pdfProxy?: PDFDocumentProxy
+  pdfBytes?: ArrayBuffer
   previewUrl?: string
 }
 

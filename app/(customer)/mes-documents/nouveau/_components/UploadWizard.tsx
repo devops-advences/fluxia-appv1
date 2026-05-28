@@ -122,7 +122,7 @@ export default function UploadWizard({ firmSlug, customerId, customerName, cabin
       formData.append('firmSlug', firmSlug)
       formData.append('raw', 'true')
       for (const f of files) formData.append('files', f.file)
-      const res = await fetch('/api/portail/documents/submit', {
+      const res = await fetch('/api/customer/documents/submit', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}` },
         body: formData,
@@ -153,13 +153,31 @@ export default function UploadWizard({ firmSlug, customerId, customerName, cabin
         const file = files[doc.fi]
         const q    = quals[qualKey(doc.fi, doc.di)]
 
-        formData.append('files', file.file)
-        metaArray.push({ type: q.type, year: q.year, month: q.month, note: q.note, originalName: file.name })
+        if (file.fileKind !== 'pdf') {
+          formData.append('files', file.file)
+          metaArray.push({ type: q.type, year: q.year, month: q.month, note: q.note, originalName: file.name })
+          continue
+        }
+
+        const { PDFDocument } = await import('pdf-lib')
+        const srcPdf  = await PDFDocument.load(file.pdfBytes!)
+        const newPdf  = await PDFDocument.create()
+        const indices = Array.from({ length: doc.end - doc.start + 1 }, (_, i) => doc.start - 1 + i)
+          .filter(i => !skips[doc.fi]?.has(i + 1))
+        const pages   = await newPdf.copyPages(srcPdf, indices)
+        pages.forEach((p: import('pdf-lib').PDFPage) => newPdf.addPage(p))
+        const bytes = await newPdf.save()
+
+        const safeName = file.name.replace(/\.pdf$/i, '').replace(/[^a-zA-Z0-9\-_]/g, '_').slice(0, 80)
+        const partName = `${safeName}_p${doc.start}${doc.start !== doc.end ? `-${doc.end}` : ''}.pdf`
+
+        formData.append('files', new File([new Uint8Array(bytes)], partName, { type: 'application/pdf' }))
+        metaArray.push({ type: q.type, year: q.year, month: q.month, note: q.note, originalName: partName })
       }
 
       formData.append('meta', JSON.stringify(metaArray))
 
-      const res = await fetch('/api/portail/documents/submit', {
+      const res = await fetch('/api/customer/documents/submit', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}` },
         body: formData,

@@ -28,10 +28,15 @@ Plateforme B2B de pré-comptabilité. Deux types d'utilisateurs : **cabinet comp
 ## Structure des fichiers
 ```
 app/
-  (auth)/         → login, register
-  (dashboard)/    → espace cabinet
-  (client)/       → portail client
-components/       → composants UI réutilisables
+  (auth)/           → login, register
+  (firm)/           → espace cabinet (route group, sans impact URL)
+  (customer)/       → portail client (route group, sans impact URL)
+components/
+  firm/             → composants spécifiques cabinet
+  customer/         → composants spécifiques client
+  shared/           → composants partagés (DocumentCard, filtres…)
+  Header.tsx        → à migrer dans shared/
+  Sidebar.tsx       → à migrer dans firm/
 lib/
   supabaseClient.ts
   utils.ts

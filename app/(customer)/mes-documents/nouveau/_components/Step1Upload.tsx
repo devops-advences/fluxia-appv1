@@ -46,7 +46,7 @@ export default function Step1Upload({ files, onFilesLoaded, onNext, onSubmitRaw,
   const [dragging, setDragging]                   = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const loadFiles = useCallback((incoming: File[]) => {
+  const loadFiles = useCallback(async (incoming: File[]) => {
     const rejected = incoming.filter(isRejectedExt)
     if (rejected.length > 0) {
       setError(`Format non supporté : ${rejected.map(f => f.name).join(', ')}. Formats acceptés : PDF, images, Excel, CSV, Word.`)
@@ -69,12 +69,16 @@ export default function Step1Upload({ files, onFilesLoaded, onNext, onSubmitRaw,
     setLoading(true)
 
     try {
-      const loaded: LoadedFile[] = incoming.map((file) => {
+      const loaded: LoadedFile[] = await Promise.all(incoming.map(async (file) => {
         const id   = crypto.randomUUID()
         const kind = getFileKind(file)
 
         if (kind === 'pdf') {
-          return { id, file, name: file.name, fileKind: 'pdf' as const, pageCount: 1 }
+          const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist')
+          GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@5.7.284/build/pdf.worker.min.mjs'
+          const pdfBytes = await file.arrayBuffer()
+          const pdfProxy = await getDocument({ data: pdfBytes.slice(0) }).promise
+          return { id, file, name: file.name, fileKind: 'pdf' as const, pageCount: pdfProxy.numPages, pdfProxy, pdfBytes }
         }
 
         if (kind === 'image') {
@@ -83,7 +87,7 @@ export default function Step1Upload({ files, onFilesLoaded, onNext, onSubmitRaw,
         }
 
         return { id, file, name: file.name, fileKind: kind, pageCount: 1 }
-      })
+      }))
 
       const newDbDups = loaded.filter(f => existingFilenames.includes(f.name)).map(f => f.name)
       if (newDbDups.length > 0) setDbDupNames(prev => new Set([...prev, ...newDbDups]))

@@ -1,10 +1,11 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import PdfPageCanvas from './PdfPageCanvas'
 import { FileImage, FileSpreadsheet, FileText } from 'lucide-react'
 import {
   type LoadedFile, type Qualification, type FileKind,
-  CUSTOMER_DOC_TYPES, MONTHS, FILE_KIND_META,
+  CUSTOMER_DOC_TYPES, MONTHS, DOC_COLORS, FILE_KIND_META,
   qualKey, getDocs, getAllDocs,
 } from './types'
 
@@ -37,6 +38,50 @@ type Props = {
   onAllDone: () => void
 }
 
+async function detectFromPage(pdfProxy: NonNullable<LoadedFile['pdfProxy']>, pageNum: number): Promise<Partial<Qualification>> {
+  try {
+    const page    = await pdfProxy.getPage(pageNum)
+    const content = await page.getTextContent()
+    const text    = content.items.map((i: unknown) => (i as { str: string }).str).join(' ').toUpperCase()
+
+    let type: string | undefined
+    if (/\bFACTURE\b.*\bVENTE\b|\bINVOICE\b/.test(text))          type = 'Facture vente'
+    else if (/\bFACTURE\b.*\bACHAT\b|FOURNISSEUR/.test(text))     type = 'Facture achat'
+    else if (/RELEV[EÉ]\s+DE\s+COMPTE|RELEV[EÉ]\s+BANCAIRE|SOLDE\s+AU/.test(text)) type = 'Relevé bancaire'
+    else if (/NOTE\s+DE\s+FRAIS|FRAIS\s+PROFESSIONNELS/.test(text))               type = 'Note de frais'
+    else if (/CONTRAT\s+DE\s+TRAVAIL|CONTRAT\s+D.EMBAUCHE/.test(text))           type = "Contrat d'embauche"
+    else if (/CONTRAT\s+(FOURNISSEUR|PRESTATAIRE|MAINTENANCE)/.test(text))        type = 'Contrat fournisseur'
+    else if (/\bFACTURE\b/.test(text))                                            type = 'Facture vente'
+
+    let year: string | undefined
+    let month: string | undefined
+
+    const dateMatch = text.match(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})/)
+    if (dateMatch) { month = dateMatch[2]; year = dateMatch[3] }
+
+    if (!month) {
+      const monthNames: Record<string, string> = {
+        'JANVIER':'01','FÉVRIER':'02','FEVRIER':'02','MARS':'03','AVRIL':'04',
+        'MAI':'05','JUIN':'06','JUILLET':'07','AOÛT':'08','AOUT':'08',
+        'SEPTEMBRE':'09','OCTOBRE':'10','NOVEMBRE':'11','DÉCEMBRE':'12','DECEMBRE':'12',
+      }
+      for (const [name, num] of Object.entries(monthNames)) {
+        const re = new RegExp(`${name}\\s+(20\\d{2})`)
+        const m  = text.match(re)
+        if (m) { month = num; year = m[1]; break }
+      }
+    }
+
+    if (!year) {
+      const yearMatch = text.match(/\b(202[0-9]|203[0-9])\b/)
+      if (yearMatch) year = yearMatch[1]
+    }
+
+    return { type, year, month }
+  } catch {
+    return {}
+  }
+}
 
 export default function Step2Qualify({
   files, cuts, skips, quals, curFi, curDi, previewP,
@@ -51,7 +96,25 @@ export default function Step2Qualify({
   const allCommitted = allDocs.every(d => !!quals[qualKey(d.fi, d.di)]?.committed)
   const [editing, setEditing] = useState(false)
 
-const setField = useCallback((field: keyof Qualification, value: string) => {
+  useEffect(() => {
+    if (!curFile || !curDoc) return
+    if (curFile.fileKind !== 'pdf' || !curFile.pdfProxy) return
+    const alreadyQualified = !!(quals[key]?.type && quals[key]?.year)
+    if (alreadyQualified) return
+    onQualChange(key, { type: '', year: new Date().getFullYear().toString(), month: '', note: '' })
+    detectFromPage(curFile.pdfProxy, curDoc.start).then(detected => {
+      if (!detected.type && !detected.year) return
+      onQualChange(key, {
+        type:  detected.type  ?? '',
+        year:  detected.year  ?? new Date().getFullYear().toString(),
+        month: detected.month ?? '',
+        note:  '',
+      })
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [curFi, curDi])
+
+  const setField = useCallback((field: keyof Qualification, value: string) => {
     onQualChange(key, { ...q, [field]: value })
   }, [key, q, onQualChange])
 
@@ -62,22 +125,33 @@ const setField = useCallback((field: keyof Qualification, value: string) => {
 
   if (!curFile || !curDoc) return null
 
+  const safePreviewP = previewP >= curDoc.start && previewP <= curDoc.end ? previewP : curDoc.start
+  const noCutsYet    = cuts.every(s => s.size === 0)
+  const hasPdfs      = files.some(f => f.fileKind === 'pdf')
+
   return (
     <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
       {/* ── Colonne gauche : pages + coupures ── */}
       <div style={{ width: '195px', flexShrink: 0, borderRight: '1px solid #e5e7eb', overflowY: 'auto', background: '#f9fafb' }}>
+        {noCutsYet && hasPdfs && (
+          <div style={{ margin: '8px 8px 0', padding: '7px 9px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', fontSize: '11px', color: '#92400e', lineHeight: 1.4 }}>
+            ✂ Cliquez <strong>entre deux pages</strong> pour séparer en plusieurs documents
+          </div>
+        )}
         {files.map((file, fi) => {
           const docs = getDocs(file.pageCount, cuts[fi])
           return (
             <div key={file.id}>
               <div style={{ padding: '6px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
                 {docs.map((doc, di) => {
+                  const color     = DOC_COLORS[di % DOC_COLORS.length]
                   const isActive  = fi === curFi && di === curDi
                   const qual      = quals[qualKey(fi, di)]
                   const committed = !!qual?.committed
                   const typeLabel = CUSTOMER_DOC_TYPES.find(t => t.value === qual?.type)?.label ?? ''
                   const period    = qual?.year ? `${qual.month ? (MONTHS[qual.month] ?? '') + ' ' : ''}${qual.year}` : ''
+                  const isLastDoc = di === docs.length - 1
                   const globalIdx = allDocs.findIndex(d => d.fi === fi && d.di === di)
                   const docLabel  = `Document ${globalIdx + 1}`
 
@@ -99,6 +173,9 @@ const setField = useCallback((field: keyof Qualification, value: string) => {
                             <span style={{ fontSize: '10px', color: '#86efac', flexShrink: 0 }}>{doc.end - doc.start + 1}p</span>
                           )}
                         </div>
+                        {!isLastDoc && file.fileKind === 'pdf' && (
+                          <CutZone hasCut={cuts[fi].has(doc.end)} onClick={() => onCutToggle(fi, doc.end)} />
+                        )}
                       </div>
                     )
                   }
@@ -126,19 +203,58 @@ const setField = useCallback((field: keyof Qualification, value: string) => {
 
                   return (
                     <div key={di} style={{ marginTop: di > 0 ? '2px' : 0 }}>
-                      <div style={{ fontSize: '10px', fontWeight: 600, color: '#6b7280', padding: '4px 5px 2px' }}>{docLabel}</div>
-                      <div
-                        onClick={() => onSelectPage(fi, di, doc.start)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '6px 8px', borderRadius: '5px', cursor: 'pointer', border: `1px solid ${isActive ? '#1D4ED8' : '#e5e7eb'}`, background: isActive ? '#EFF6FF' : '#fff' }}
-                      >
-                        <div style={{ width: '24px', height: '24px', background: '#f3f4f6', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <span style={{ fontSize: '9px', color: '#6b7280', fontWeight: 700 }}>PDF</span>
-                        </div>
+                      <div onClick={() => onSelectPage(fi, di, doc.start)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 5px 3px', cursor: 'pointer' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: color.text, flexShrink: 0 }} />
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '11px', fontWeight: 500, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
-                          <span style={{ fontSize: '10px', color: '#f59e0b' }}>Non traité</span>
+                          <span style={{ fontSize: '11px', fontWeight: 600, color: '#374151' }}>{docLabel}</span>
+                          <span style={{ fontSize: '10px', color: '#f59e0b', marginLeft: '5px' }}>Non traité</span>
                         </div>
                       </div>
+                      {Array.from({ length: doc.end - doc.start + 1 }, (_, i) => doc.start + i).map(p => {
+                        const isPrev = isActive && p === safePreviewP
+                        const isSkip = skips[fi]?.has(p)
+                        const hasCut = cuts[fi].has(p)
+                        return (
+                          <div key={p}>
+                            <div
+                              className="page-thumb-row"
+                              onClick={() => !isSkip && onSelectPage(fi, di, p)}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '7px',
+                                padding: '4px 5px', borderRadius: '5px',
+                                cursor: isSkip ? 'default' : 'pointer',
+                                borderTop:    `1px solid ${isPrev ? '#1D4ED8' : 'transparent'}`,
+                                borderRight:  `1px solid ${isPrev ? '#1D4ED8' : 'transparent'}`,
+                                borderBottom: `1px solid ${isPrev ? '#1D4ED8' : 'transparent'}`,
+                                borderLeft:   `3px solid ${isActive ? color.text : 'transparent'}`,
+                                background: isSkip ? '#fef2f2' : isPrev ? '#EFF6FF' : isActive ? '#EFF6FF' : 'transparent',
+                                opacity: isSkip ? 0.5 : 1,
+                                transition: 'all 0.1s', position: 'relative',
+                              }}
+                            >
+                              <div style={{ width: '30px', height: '40px', flexShrink: 0, border: `1px solid ${isSkip ? '#fca5a5' : '#d1d5db'}`, borderRadius: '2px', overflow: 'hidden', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                                <PdfPageCanvas pdfProxy={file.pdfProxy!} pageNumber={p} scale={0.1} className="pdf-thumb" />
+                                {isSkip && (
+                                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(254,226,226,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', color: '#ef4444' }}>✕</div>
+                                )}
+                              </div>
+                              <span style={{ fontSize: '11px', color: isSkip ? '#9ca3af' : '#374151', flex: 1, textDecoration: isSkip ? 'line-through' : 'none' }}>Page {p}</span>
+                              <button
+                                type="button"
+                                className="skip-btn"
+                                onClick={e => { e.stopPropagation(); onSkipToggle(fi, p) }}
+                                title={isSkip ? 'Restaurer la page' : 'Ignorer cette page'}
+                                style={{ position: 'absolute', top: '2px', right: '2px', width: '16px', height: '16px', borderRadius: '50%', border: 'none', cursor: 'pointer', fontSize: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isSkip ? '#ef4444' : '#9ca3af', color: '#fff', opacity: isSkip ? 1 : 0, transition: 'opacity 0.12s', fontFamily: 'inherit' }}
+                              >
+                                {isSkip ? '↩' : '✕'}
+                              </button>
+                            </div>
+                            {p < file.pageCount && (
+                              <CutZone hasCut={hasCut} onClick={() => onCutToggle(fi, p)} />
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   )
                 })}
@@ -159,10 +275,19 @@ const setField = useCallback((field: keyof Qualification, value: string) => {
                 : `${(curFile.file.size / (1024 * 1024)).toFixed(1)} Mo`}
             </span>
           </div>
+          {curFile.fileKind === 'pdf' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+              <NavBtn disabled={safePreviewP <= curDoc.start} onClick={() => onSelectPage(curFi, curDi, safePreviewP - 1)}>‹</NavBtn>
+              <span style={{ fontSize: '11px', color: '#6b7280', minWidth: '44px', textAlign: 'center' }}>p.{safePreviewP - curDoc.start + 1} / {curDoc.end - curDoc.start + 1}</span>
+              <NavBtn disabled={safePreviewP >= curDoc.end} onClick={() => onSelectPage(curFi, curDi, safePreviewP + 1)}>›</NavBtn>
+            </div>
+          )}
         </div>
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '16px 20px' }}>
           {curFile.fileKind === 'pdf' && (
-            <NonPdfPreview fileKind="pdf" name={curFile.name} />
+            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '4px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', overflow: 'hidden', display: 'inline-block', lineHeight: 0, maxWidth: '100%' }}>
+              <PdfPageCanvas pdfProxy={curFile.pdfProxy!} pageNumber={safePreviewP} scale={1.2} className="pdf-preview" />
+            </div>
           )}
           {curFile.fileKind === 'image' && (
             <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '4px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', overflow: 'hidden', display: 'inline-block', maxWidth: '100%' }}>

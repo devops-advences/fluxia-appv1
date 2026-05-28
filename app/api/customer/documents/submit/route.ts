@@ -148,7 +148,7 @@ export async function POST(req: Request) {
     const year  = isRaw ? currentYear : parseInt(m!.year, 10)
     const month = (!isRaw && m!.month) ? parseInt(m!.month, 10) : null
 
-    const { error: insertError } = await service.from('document').insert({
+    const { data: newDoc, error: insertError } = await service.from('document').insert({
       firm_id:      firm.id,
       customer_id:  customer.id,
       type_id:      isRaw ? null : (docTypeMap[m!.type] ?? null),
@@ -160,12 +160,19 @@ export async function POST(req: Request) {
       months:       month ? [month] : null,
       status:       isRaw ? 'draft' : 'pending',
       notes:        isRaw ? null : (m!.note || null),
-      file:         true,
-    })
+    }).select('id').single()
 
-    if (insertError) {
+    if (insertError || !newDoc) {
       await service.storage.from(bucket).remove(uploadedPaths)
-      return NextResponse.json({ error: `Erreur enregistrement : ${insertError.message}` }, { status: 500 })
+      return NextResponse.json({ error: `Erreur enregistrement : ${insertError?.message ?? 'inconnu'}` }, { status: 500 })
+    }
+
+    if (!isRaw) {
+      await service.from('document_event').insert({
+        document_id: newDoc.id,
+        user_id:     user.id,
+        event_type:  'uploaded',
+      })
     }
   }
 
