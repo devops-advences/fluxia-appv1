@@ -75,7 +75,7 @@ export default function Step1Upload({ files, onFilesLoaded, onNext, onSubmitRaw,
 
         if (kind === 'pdf') {
           const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist')
-          GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
+          GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@5.7.284/build/pdf.worker.min.mjs'
           const pdfBytes = await file.arrayBuffer()
           const pdfProxy = await getDocument({ data: pdfBytes.slice(0) }).promise
           return { id, file, name: file.name, fileKind: 'pdf' as const, pageCount: pdfProxy.numPages, pdfProxy, pdfBytes }
