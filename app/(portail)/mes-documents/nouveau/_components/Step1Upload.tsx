@@ -2,10 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react'
 import { Upload, X, FileText, FileImage, FileSpreadsheet, Loader2 } from 'lucide-react'
-import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import { type LoadedFile, type FileKind, getFileKind, FILE_KIND_META } from './types'
-
-GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@5.7.284/build/pdf.worker.min.mjs'
 
 const ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.tiff,.tif,.heic,.xlsx,.xls,.csv,.docx,.doc'
 const REJECTED_EXTS = ['.zip', '.xml', '.ods', '.odt', '.rtf', '.gz', '.tar']
@@ -77,6 +74,8 @@ export default function Step1Upload({ files, onFilesLoaded, onNext, onSubmitRaw,
         const kind = getFileKind(file)
 
         if (kind === 'pdf') {
+          const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist')
+          GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@5.7.284/build/pdf.worker.min.mjs'
           const pdfBytes = await file.arrayBuffer()
           const pdfProxy = await getDocument({ data: pdfBytes.slice(0) }).promise
           return { id, file, name: file.name, fileKind: 'pdf' as const, pageCount: pdfProxy.numPages, pdfProxy, pdfBytes }

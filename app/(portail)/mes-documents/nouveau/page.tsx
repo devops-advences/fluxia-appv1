@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import { supabase } from '@/lib/supabaseClient'
-import UploadWizard from './_components/UploadWizard'
 import type { WizardContext } from './_components/types'
+
+const UploadWizard = dynamic(() => import('./_components/UploadWizard'), { ssr: false })
 
 export default function NouveauDocumentPage() {
   const router = useRouter()

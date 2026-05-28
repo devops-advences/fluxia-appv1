@@ -3,7 +3,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { CheckCircle, Loader2 } from 'lucide-react'
-import { PDFDocument, type PDFPage } from 'pdf-lib'
 import Step1Upload  from './Step1Upload'
 import Step2Qualify from './Step2Qualify'
 import Step3Confirm from './Step3Confirm'
@@ -160,12 +159,13 @@ export default function UploadWizard({ firmSlug, customerId, customerName, cabin
           continue
         }
 
+        const { PDFDocument } = await import('pdf-lib')
         const srcPdf  = await PDFDocument.load(file.pdfBytes!)
         const newPdf  = await PDFDocument.create()
         const indices = Array.from({ length: doc.end - doc.start + 1 }, (_, i) => doc.start - 1 + i)
           .filter(i => !skips[doc.fi]?.has(i + 1))
         const pages   = await newPdf.copyPages(srcPdf, indices)
-        pages.forEach((p: PDFPage) => newPdf.addPage(p))
+        pages.forEach((p: import('pdf-lib').PDFPage) => newPdf.addPage(p))
         const bytes = await newPdf.save()
 
         const safeName = file.name.replace(/\.pdf$/i, '').replace(/[^a-zA-Z0-9\-_]/g, '_').slice(0, 80)
