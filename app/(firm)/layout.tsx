@@ -10,6 +10,7 @@ type UserInfo = {
   firmName: string
   countryCode: string
   userName: string
+  logoUrl: string | null
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -49,21 +50,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       let firmName = ''
       let countryCode = 'FR'
+      let logoUrl: string | null = null
 
       if (data.firm_id) {
         const { data: firm } = await supabase
           .from('firm')
-          .select('name, country_code')
+          .select('name, country_code, logo_url')
           .eq('id', data.firm_id)
           .single()
-        firmName = firm?.name ?? ''
-        countryCode = firm?.country_code ?? 'FR'
+        firmName = (firm as { name: string; country_code: string; logo_url: string | null } | null)?.name ?? ''
+        countryCode = (firm as { name: string; country_code: string; logo_url: string | null } | null)?.country_code ?? 'FR'
+        logoUrl = (firm as { name: string; country_code: string; logo_url: string | null } | null)?.logo_url ?? null
       }
 
       if (!active) return
       setUserInfo({
         firmName,
         countryCode,
+        logoUrl,
         userName: `${data.first_name} ${data.last_name}`,
       })
     }
@@ -94,7 +98,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="flex min-h-screen bg-[#F8FAFC]">
       <Sidebar {...userInfo} />
       <div className="flex-1 flex flex-col ml-56">
-        <Header />
+        <Header align="center" />
         <main className="flex-1 p-6">{children}</main>
       </div>
     </div>

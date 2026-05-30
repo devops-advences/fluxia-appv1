@@ -28,35 +28,25 @@ export type LoadedFile = {
   previewUrl?: string
 }
 
-export type Qualification = {
-  type: string
-  year: string
-  month: string
-  note: string
+export type CabSource = 'customer' | 'firm'
+
+export type CabQualification = {
+  typeId:     string
+  typeName:   string
+  year:       string
+  month:      string
+  note:       string
   committed?: boolean
 }
 
-export type WizardContext = {
-  customerId:        string
-  customerName:      string
-  cabinetName:       string
-  existingFilenames: string[]
-  accessToken:       string
-}
+export type Customer = { id: string; name: string; country_code: string }
+export type DocType  = { id: string; name: string }
 
-// Valeurs slug → label (pour auto-détection + affichage)
-export const CUSTOMER_DOC_TYPES: { value: string; label: string }[] = [
-  { value: 'Facture vente',       label: 'Facture vente' },
-  { value: 'Facture achat',       label: 'Facture achat' },
-  { value: 'Relevé bancaire',     label: 'Relevé bancaire' },
-  { value: 'Note de frais',       label: 'Note de frais' },
-  { value: 'Absence / congé',     label: 'Absence / congé' },
-  { value: "Contrat d'embauche",  label: "Contrat d'embauche" },
-  { value: 'Contrat fournisseur', label: 'Contrat fournisseur' },
-  { value: 'Contrat vente',       label: 'Contrat vente' },
-  { value: 'Autre contrat',       label: 'Autre contrat' },
-  { value: 'Autre',               label: 'Autre' },
-]
+export type CabWizardContext = {
+  firmName:    string
+  customers:   Customer[]
+  accessToken: string
+}
 
 export const MONTHS: Record<string, string> = {
   '01': 'Janvier',   '02': 'Février',   '03': 'Mars',      '04': 'Avril',
@@ -87,7 +77,7 @@ export function getDocs(pageCount: number, cuts: Set<number>): { start: number; 
 export function getAllDocs(files: LoadedFile[], cuts: Set<number>[]) {
   const out: { fi: number; di: number; start: number; end: number; name: string }[] = []
   files.forEach((f, fi) => {
-    getDocs(f.pageCount, cuts[fi]).forEach((d, di) => {
+    getDocs(f.pageCount, cuts[fi] ?? new Set()).forEach((d, di) => {
       out.push({ fi, di, ...d, name: f.name })
     })
   })

@@ -89,7 +89,7 @@ export async function POST(req: Request) {
 
   const { data: firm } = await service
     .from('firm')
-    .select('id, slug, name')
+    .select('id, name')
     .eq('id', customer.firm_id)
     .single()
   if (!firm) return NextResponse.json({ error: 'Cabinet introuvable' }, { status: 500 })
@@ -112,7 +112,7 @@ export async function POST(req: Request) {
   }
 
   const currentYear = new Date().getFullYear()
-  const bucket = firm.slug
+  const bucket = firm.id
   const uploadedPaths: string[] = []
 
   for (let i = 0; i < files.length; i++) {
@@ -123,9 +123,7 @@ export async function POST(req: Request) {
     const uid        = crypto.randomUUID().slice(0, 8)
     const uniqueName = `${uid}_${safeName}`
 
-    const path = isRaw
-      ? `${customer.id}/tampon/${uniqueName}`
-      : `${customer.id}/deposes/${m!.year}/${m!.month ? m!.month.padStart(2, '0') : '00'}/${uniqueName}`
+    const path = `${customer.id}/customer/${uniqueName}`
 
     let { error: uploadError } = await service.storage
       .from(bucket)
@@ -160,6 +158,7 @@ export async function POST(req: Request) {
       months:       month ? [month] : null,
       status:       isRaw ? 'draft' : 'pending',
       notes:        isRaw ? null : (m!.note || null),
+      source:       'customer',
     }).select('id').single()
 
     if (insertError || !newDoc) {

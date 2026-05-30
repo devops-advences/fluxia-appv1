@@ -41,10 +41,12 @@ export async function POST(req: Request) {
   const typeId     = formData.get('typeId')
   const yearRaw    = formData.get('year')
   const monthRaw   = formData.get('month')
+  const sourceRaw  = formData.get('source')
   const file       = formData.get('file')
 
   if (!isUuid(customerId)) return NextResponse.json({ error: 'Client invalide' }, { status: 400 })
   if (typeId && !isUuid(typeId)) return NextResponse.json({ error: 'Type invalide' }, { status: 400 })
+  if (sourceRaw !== 'customer' && sourceRaw !== 'firm') return NextResponse.json({ error: 'Source invalide' }, { status: 400 })
 
   const year = parseInt(String(yearRaw ?? ''), 10)
   if (isNaN(year) || year < 2000 || year > 2099) return NextResponse.json({ error: 'Année invalide' }, { status: 400 })
@@ -64,22 +66,21 @@ export async function POST(req: Request) {
   if (!customer) return NextResponse.json({ error: 'Client introuvable' }, { status: 404 })
 
   const { data: firm } = await service
-    .from('firm').select('id, slug').eq('id', ud.firm_id).single()
+    .from('firm').select('id').eq('id', ud.firm_id).single()
   if (!firm) return NextResponse.json({ error: 'Cabinet introuvable' }, { status: 500 })
 
   const safeName   = file.name.replace(/[^a-zA-Z0-9._\-]/g, '_').slice(0, 180)
   const uid        = crypto.randomUUID().slice(0, 8)
-  const monthStr   = month ? String(month).padStart(2, '0') : '00'
-  const storagePath = `${customer.id}/cab/${year}/${monthStr}/${uid}_${safeName}`
+  const storagePath = `${customer.id}/firm/${uid}_${safeName}`
 
   let { error: uploadError } = await service.storage
-    .from(firm.slug)
+    .from(firm.id)
     .upload(storagePath, file, { contentType: getContentType(file), upsert: false })
 
   if (uploadError?.message.toLowerCase().includes('bucket not found')) {
-    await service.storage.createBucket(firm.slug, { public: false })
+    await service.storage.createBucket(firm.id, { public: false })
     const retry = await service.storage
-      .from(firm.slug)
+      .from(firm.id)
       .upload(storagePath, file, { contentType: getContentType(file), upsert: false })
     uploadError = retry.error
   }
@@ -97,10 +98,11 @@ export async function POST(req: Request) {
     year,
     months:       month ? [month] : null,
     status:       'pending',
+    source:       sourceRaw,
   }).select('id').single()
 
   if (insertError || !doc) {
-    await service.storage.from(firm.slug).remove([storagePath])
+    await service.storage.from(firm.id).remove([storagePath])
     return NextResponse.json({ error: insertError?.message ?? 'Erreur insertion' }, { status: 500 })
   }
 

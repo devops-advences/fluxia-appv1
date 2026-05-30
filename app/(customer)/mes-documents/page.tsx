@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Download, LayoutGrid, List, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, Eye, LayoutGrid, List, Pencil, Search, Trash2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
 
 const STATUS_CFG = {
@@ -12,6 +12,7 @@ const STATUS_CFG = {
   rejected:  { label: 'Rejeté',       bg: '#fef2f2', text: '#991b1b',  border: '#fca5a5' },
 } as const
 type Status = keyof typeof STATUS_CFG
+type StatusFilter = Status | 'all' | 'unprocessed'
 
 const MONTHS_FR = ['','Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
 
@@ -19,6 +20,40 @@ function formatPeriod(year: number, months: number[] | null): string {
   if (!months || months.length === 0) return String(year)
   if (months.length === 1) return `${MONTHS_FR[months[0]]} ${year}`
   return `${MONTHS_FR[months[0]]}–${MONTHS_FR[months[months.length - 1]]} ${year}`
+}
+
+function SizeCell({ kb }: { kb: number | null }) {
+  if (!kb) return <span className="text-xs text-[#94A3B8]">—</span>
+  const label = kb < 1024 ? `${kb} Ko` : `${(kb / 1024).toFixed(1)} Mo`
+  if (kb > 10 * 1024) return <span style={{ fontSize: '11px', fontWeight: 600, color: '#DC2626' }}>{label}</span>
+  if (kb > 5 * 1024)  return <span style={{ fontSize: '11px', fontWeight: 600, color: '#D97706' }}>{label}</span>
+  return <span className="text-xs text-[#94A3B8]">{label}</span>
+}
+
+function formatExt(filename: string | null): string {
+  if (!filename) return ''
+  return (filename.split('.').pop() ?? '').toUpperCase()
+}
+
+const EXT_COLORS: Record<string, { bg: string; text: string }> = {
+  PDF:  { bg: '#FEF2F2', text: '#991B1B' },
+  CSV:  { bg: '#F0FDF4', text: '#166534' },
+  XLSX: { bg: '#F0FDF4', text: '#166534' },
+  XLS:  { bg: '#F0FDF4', text: '#166534' },
+  DOCX: { bg: '#EFF6FF', text: '#1D4ED8' },
+  DOC:  { bg: '#EFF6FF', text: '#1D4ED8' },
+  JPG:  { bg: '#F5F3FF', text: '#5B21B6' },
+  JPEG: { bg: '#F5F3FF', text: '#5B21B6' },
+  PNG:  { bg: '#F5F3FF', text: '#5B21B6' },
+  WEBP: { bg: '#F5F3FF', text: '#5B21B6' },
+  GIF:  { bg: '#F5F3FF', text: '#5B21B6' },
+}
+
+function ExtBadge({ filename }: { filename: string | null }) {
+  const ext = formatExt(filename)
+  if (!ext) return null
+  const c = EXT_COLORS[ext] ?? { bg: '#F8FAFC', text: '#64748B' }
+  return <span style={{ padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 700, background: c.bg, color: c.text }}>{ext}</span>
 }
 
 type DocRow = {
@@ -29,90 +64,281 @@ type DocRow = {
   months: number[] | null
   status: Status
   notes: string | null
+  size_kb: number | null
+  mime_type: string | null
   created_at: string
-  type: { name: string } | null
+  type: { id: string; name: string; customer: boolean } | null
 }
 
+type DocTypeOpt = { id: string; name: string }
+
+const SEL = "text-sm border border-[#E2E8F0] rounded-lg px-3 py-1.5 bg-white text-[#0F172A] focus:outline-none focus:ring-1 focus:ring-[#1D4ED8]"
+
 export default function MesDocumentsPage() {
-  const router = useRouter()
+  const router      = useRouter()
+  const currentYear = new Date().getFullYear()
+
+  const [customerId, setCustomerId]   = useState<string | null>(null)
+  const [docTypes, setDocTypes]       = useState<DocTypeOpt[]>([])
+  const [availableYears, setAvailableYears] = useState<number[]>([currentYear])
+  const [editQual, setEditQual]       = useState<{ id: string; typeId: string; year: number; month: string } | null>(null)
+  const [saving, setSaving]           = useState<string | null>(null)
+  const [savedDoc, setSavedDoc]       = useState<string | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<DocRow | null>(null)
+  const [deleting, setDeleting]           = useState(false)
+
+  const [draftYear, setDraftYear]     = useState(currentYear)
+  const [draftStatus, setDraftStatus] = useState<StatusFilter>('unprocessed')
+
+  const [yearFilter, setYearFilter]     = useState(currentYear)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('unprocessed')
+
+  const [view, setView]         = useState<'kanban' | 'list'>('list')
+  const [pageSize, setPageSize] = useState<10 | 20>(20)
+  const [page, setPage]         = useState(0)
+  const [total, setTotal]       = useState(0)
+
   const [docs, setDocs]               = useState<DocRow[]>([])
-  const [view, setView]               = useState<'kanban' | 'list'>('kanban')
-  const [loading, setLoading]         = useState(true)
-  const [downloading, setDownloading] = useState<string | null>(null)
+  const [initLoading, setInitLoading] = useState(true)
+  const [docsLoading, setDocsLoading] = useState(false)
+  const [acting, setActing]           = useState<string | null>(null)
+  const [previewDoc, setPreviewDoc]   = useState<{ url: string; filename: string | null; mime: string | null } | null>(null)
+
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    let active = true
-    async function load() {
+    async function init() {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!active) return
       if (!session) { router.push('/login'); return }
 
       const { data: uc } = await supabase
         .from('user_customer').select('customer_id').eq('user_id', session.user.id).limit(1).single()
-      if (!active) return
-      if (!uc?.customer_id) { setLoading(false); return }
+      if (!uc?.customer_id) { setInitLoading(false); return }
 
-      const { data } = await supabase
-        .from('document')
-        .select('id, filename, storage_path, year, months, status, notes, created_at, type:type_id(name)')
-        .eq('customer_id', uc.customer_id)
-        .order('created_at', { ascending: false })
-      if (!active) return
-      setDocs((data ?? []) as unknown as DocRow[])
-      setLoading(false)
+      const { data: cust } = await supabase.from('customer').select('country_code').eq('id', uc.customer_id).single()
+
+      const [yearsRes, typesRes] = await Promise.all([
+        supabase.from('document').select('year').eq('customer_id', uc.customer_id),
+        cust
+          ? supabase.from('document_type').select('id, name').eq('country_code', cust.country_code).eq('customer', true).eq('active', true).order('rank')
+          : Promise.resolve({ data: [] }),
+      ])
+
+      const rawYears = (yearsRes.data ?? []).map(r => (r as { year: number }).year)
+      const uniqueYears = [...new Set(rawYears)].sort((a, b) => b - a)
+      setAvailableYears(uniqueYears.length > 0 ? uniqueYears : [currentYear])
+      setDocTypes((typesRes.data ?? []) as DocTypeOpt[])
+      setCustomerId(uc.customer_id)
+      setInitLoading(false)
     }
-    load()
-    return () => { active = false }
-  }, [router])
+    init()
+  }, [router, currentYear])
 
-  const byStatus = (s: Status) => docs.filter(d => d.status === s)
+  const loadDocs = useCallback(async (opts: {
+    customerId: string; year: number; status: StatusFilter; page: number; pageSize: number
+  }) => {
+    setDocsLoading(true)
 
-  const handleDownload = async (doc: DocRow) => {
-    if (!doc.storage_path || downloading) return
-    setDownloading(doc.id)
+    let q = supabase.from('document')
+      .select('id, filename, storage_path, year, months, status, notes, size_kb, mime_type, created_at, type:type_id(id, name, customer)', { count: 'exact' })
+      .eq('customer_id', opts.customerId)
+      .eq('year', opts.year)
+      .not('type.customer', 'is', false)
+
+    if (opts.status === 'all')              q = q.in('status', ['draft', 'pending', 'processed', 'rejected'])
+    else if (opts.status === 'unprocessed') q = q.in('status', ['draft', 'pending'])
+    else                                    q = q.eq('status', opts.status)
+
+    q = q.order('created_at', { ascending: false })
+    q = q.range(opts.page * opts.pageSize, (opts.page + 1) * opts.pageSize - 1)
+
+    const { data, count } = await q
+    const clientDocs = ((data ?? []) as unknown as DocRow[]).filter(d => !d.type || d.type.customer)
+    setDocs(clientDocs)
+    setTotal(count ?? 0)
+    setDocsLoading(false)
+  }, [])
+
+  const handleSearch = useCallback(() => {
+    setYearFilter(draftYear)
+    setStatusFilter(draftStatus)
+    setPage(0)
+  }, [draftYear, draftStatus])
+
+  useEffect(() => {
+    if (!customerId) return
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      loadDocs({ customerId, year: yearFilter, status: statusFilter, page, pageSize })
+    }, 300)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [customerId, yearFilter, statusFilter, page, pageSize, loadDocs])
+
+  const getToken = async () => {
     const { data: { session } } = await supabase.auth.getSession()
-    const res = await fetch(`/api/documents/${doc.id}/download`, {
-      headers: { 'Authorization': `Bearer ${session?.access_token}` },
-    })
-    if (res.ok) {
-      const { url } = await res.json() as { url: string }
-      window.open(url, '_blank')
-    }
-    setDownloading(null)
+    return session?.access_token ?? null
   }
 
-  if (loading) return (
+  const handleDelete = useCallback(async () => {
+    if (!deleteConfirm) return
+    setDeleting(true)
+    const token = await getToken()
+    const res = await fetch(`/api/customer/documents/${deleteConfirm.id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+    if (res.ok) {
+      setDocs(prev => prev.filter(d => d.id !== deleteConfirm.id))
+      setTotal(prev => prev - 1)
+      setDeleteConfirm(null)
+    }
+    setDeleting(false)
+  }, [deleteConfirm])
+
+  const handleSaveQual = useCallback(async (id: string, typeId: string, year: number, month: string) => {
+    setSaving(id)
+    const token = await getToken()
+    const months = month ? [parseInt(month)] : null
+    const typeName = docTypes.find(t => t.id === typeId)?.name ?? null
+    const res = await fetch(`/api/customer/documents/${id}`, {
+      method: 'PATCH',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type_id: typeId || null, year, months }),
+    })
+    if (res.ok) {
+      setDocs(prev => prev.map(d => d.id === id
+        ? { ...d, type: typeId ? { id: typeId, name: typeName ?? '', customer: true } : null, year, months }
+        : d
+      ))
+      setSavedDoc(id)
+      setTimeout(() => setSavedDoc(null), 1500)
+    }
+    setSaving(null)
+  }, [docTypes])
+
+  const handleView = useCallback(async (doc: DocRow) => {
+    if (!doc.storage_path || acting) return
+    setActing(doc.id)
+    const token = await getToken()
+    const res = await fetch(`/api/documents/${doc.id}/download`, { headers: { 'Authorization': `Bearer ${token}` } })
+    if (res.ok) {
+      const { url } = await res.json() as { url: string }
+      setPreviewDoc({ url, filename: doc.filename, mime: doc.mime_type })
+    }
+    setActing(null)
+  }, [acting])
+
+  const handleDownload = useCallback(async (doc: DocRow) => {
+    if (!doc.storage_path || acting) return
+    setActing(doc.id)
+    const token = await getToken()
+    const res = await fetch(`/api/documents/${doc.id}/download`, { headers: { 'Authorization': `Bearer ${token}` } })
+    if (res.ok) {
+      const { url } = await res.json() as { url: string }
+      const a = document.createElement('a')
+      a.href = url; a.download = doc.filename ?? 'document'; a.click()
+    }
+    setActing(null)
+  }, [acting])
+
+  if (initLoading) return (
     <div className="flex items-center justify-center h-40">
       <div className="w-5 h-5 border-2 border-[#1D4ED8] border-t-transparent rounded-full animate-spin" />
     </div>
   )
 
+  const totalPages = Math.ceil(total / pageSize)
+  const from       = total === 0 ? 0 : page * pageSize + 1
+  const to         = Math.min((page + 1) * pageSize, total)
+  const byStatus   = (s: Status) => docs.filter(d => d.status === s)
+
   return (
-    <div className="max-w-5xl">
-      <div className="flex items-center justify-between mb-5">
+    <div className="max-w-7xl">
+
+      {deleteConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: '12px', padding: '28px', width: '380px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+            <div style={{ fontSize: '15px', fontWeight: 700, color: '#0F172A', marginBottom: '8px' }}>Supprimer ce document ?</div>
+            <div style={{ fontSize: '13px', color: '#64748B', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deleteConfirm.filename ?? '—'}</div>
+            <div style={{ fontSize: '12px', color: '#DC2626', marginBottom: '24px' }}>Cette action est définitive.</div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setDeleteConfirm(null)} disabled={deleting}
+                style={{ padding: '8px 18px', border: '1px solid #E2E8F0', borderRadius: '8px', fontSize: '13px', background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                Annuler
+              </button>
+              <button onClick={handleDelete} disabled={deleting}
+                style={{ padding: '8px 18px', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: 600, background: '#DC2626', color: '#fff', cursor: deleting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: deleting ? 0.6 : 1 }}>
+                {deleting ? 'Suppression…' : 'Supprimer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewDoc && (
+        <div onClick={() => setPreviewDoc(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: '12px', width: '90vw', height: '90vh', maxWidth: '1100px', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.3)' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <span style={{ fontSize: '13px', fontWeight: 500, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 'calc(100% - 40px)' }}>{previewDoc.filename ?? 'Document'}</span>
+              <button onClick={() => setPreviewDoc(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: '4px', display: 'flex' }}><X size={18} /></button>
+            </div>
+            <div style={{ flex: 1, overflow: 'hidden', background: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {(previewDoc.mime === 'application/pdf' || previewDoc.filename?.toLowerCase().endsWith('.pdf')) && (
+                <iframe src={previewDoc.url} style={{ width: '100%', height: '100%', border: 'none' }} title={previewDoc.filename ?? 'Document'} />
+              )}
+              {previewDoc.mime?.startsWith('image/') && (
+                <img src={previewDoc.url} alt={previewDoc.filename ?? ''} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+              )}
+              {!previewDoc.mime?.startsWith('image/') && previewDoc.mime !== 'application/pdf' && !previewDoc.filename?.toLowerCase().endsWith('.pdf') && (
+                <div style={{ textAlign: 'center', color: '#94A3B8' }}>
+                  <div style={{ fontSize: '13px', marginBottom: '12px' }}>Aperçu non disponible pour ce format</div>
+                  <a href={previewDoc.url} download={previewDoc.filename ?? 'document'} style={{ fontSize: '13px', color: '#1D4ED8', textDecoration: 'underline' }}>Télécharger le fichier</a>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-xl font-semibold text-[#0F172A]">Mes documents</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">{docs.length} document{docs.length !== 1 ? 's' : ''}</p>
+          <p className="text-sm text-[#64748B] mt-0.5">{total} document{total !== 1 ? 's' : ''}</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex border border-[#E2E8F0] rounded-lg overflow-hidden bg-white">
-            <button onClick={() => setView('kanban')} className={`px-3 py-1.5 flex items-center gap-1.5 text-xs font-medium transition-colors ${view === 'kanban' ? 'bg-[#1D4ED8] text-white' : 'text-[#64748B] hover:bg-[#F8FAFC]'}`}>
+            <button onClick={() => { setView('kanban'); setPage(0) }} className={`px-3 py-1.5 flex items-center gap-1.5 text-xs font-medium transition-colors ${view === 'kanban' ? 'bg-[#1D4ED8] text-white' : 'text-[#64748B] hover:bg-[#F8FAFC]'}`}>
               <LayoutGrid size={13} /> Kanban
             </button>
-            <button onClick={() => setView('list')} className={`px-3 py-1.5 flex items-center gap-1.5 text-xs font-medium transition-colors ${view === 'list' ? 'bg-[#1D4ED8] text-white' : 'text-[#64748B] hover:bg-[#F8FAFC]'}`}>
+            <button onClick={() => { setView('list'); setPage(0) }} className={`px-3 py-1.5 flex items-center gap-1.5 text-xs font-medium transition-colors ${view === 'list' ? 'bg-[#1D4ED8] text-white' : 'text-[#64748B] hover:bg-[#F8FAFC]'}`}>
               <List size={13} /> Liste
             </button>
           </div>
-          <button
-            onClick={() => router.push('/mes-documents/nouveau')}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1D4ED8] text-white text-xs font-medium rounded-lg hover:bg-[#1e40af] transition-colors"
-          >
-            <Plus size={13} /> Nouveau
-          </button>
         </div>
       </div>
 
-      {view === 'kanban' ? (
+      <div className="flex items-center gap-2 mb-5 flex-wrap">
+        <select value={draftYear} onChange={e => setDraftYear(Number(e.target.value))} className={SEL}>
+          {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <select value={draftStatus} onChange={e => setDraftStatus(e.target.value as StatusFilter)} className={SEL}>
+          <option value="unprocessed">Non traité</option>
+          <option value="all">Tous les statuts</option>
+          <option value="pending">En attente</option>
+          <option value="processed">Traité</option>
+          <option value="rejected">Rejeté</option>
+        </select>
+        <button onClick={handleSearch}
+          className="px-4 py-1.5 text-sm font-medium bg-[#1D4ED8] text-white rounded-lg hover:bg-[#1e40af] transition-colors flex items-center gap-1.5">
+          <Search size={13} /> Rechercher
+        </button>
+      </div>
+
+      {docsLoading ? (
+        <div className="flex items-center justify-center h-40">
+          <div className="w-5 h-5 border-2 border-[#1D4ED8] border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : view === 'kanban' ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', alignItems: 'start' }}>
           {(['draft', 'pending', 'processed', 'rejected'] as Status[]).map(status => {
             const cfg  = STATUS_CFG[status]
@@ -124,11 +350,9 @@ export default function MesDocumentsPage() {
                   <span style={{ fontSize: '11px', color: '#94A3B8', fontWeight: 500 }}>{cols.length}</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {cols.length === 0 && (
-                    <div style={{ padding: '20px', textAlign: 'center', fontSize: '11px', color: '#CBD5E1' }}>—</div>
-                  )}
+                  {cols.length === 0 && <div style={{ padding: '20px', textAlign: 'center', fontSize: '11px', color: '#CBD5E1' }}>—</div>}
                   {cols.map(d => (
-                    <ClientDocCard key={d.id} doc={d} downloading={downloading} onDownload={handleDownload} />
+                    <DocCard key={d.id} doc={d} acting={acting} onView={handleView} onDownload={handleDownload} />
                   ))}
                 </div>
               </div>
@@ -137,40 +361,106 @@ export default function MesDocumentsPage() {
         </div>
       ) : (
         <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
+          <style>{`.edit-cell-icon { opacity: 0.25; transition: opacity 0.15s; } .edit-cell-btn:hover .edit-cell-icon { opacity: 1; } .edit-cell-btn:hover { background: #F8FAFC !important; }`}</style>
           <table className="w-full border-collapse">
             <thead>
               <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
-                {['Type','Fichier','Période','Statut','Date',''].map((h, i) => (
+                {['Type','Fichier','Format','Poids','Période','Statut','Date','Actions'].map((h, i) => (
                   <th key={i} className="px-4 py-3 text-left text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {docs.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-[#94A3B8]">Aucun document déposé</td></tr>
+                <tr><td colSpan={8}>
+                  <div style={{ padding: '48px 24px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '28px', marginBottom: '8px' }}>📂</div>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#64748B', marginBottom: '4px' }}>Aucun document</div>
+                    <div style={{ fontSize: '12px', color: '#94A3B8' }}>Modifiez les critères et relancez la recherche</div>
+                  </div>
+                </td></tr>
               )}
               {docs.map(d => {
-                const cfg = STATUS_CFG[d.status]
+                const cfg       = STATUS_CFG[d.status]
+                const busy      = acting === d.id || saving === d.id
+                const isEditing = editQual?.id === d.id
+                const eq        = editQual
+                const YEARS     = [2026, 2025, 2024, 2023, 2022]
+                const openEdit  = () => setEditQual({ id: d.id, typeId: d.type?.id ?? '', year: d.year, month: d.months?.[0]?.toString() ?? '' })
                 return (
-                  <tr key={d.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] transition-colors">
-                    <td className="px-4 py-3 text-xs text-[#64748B] max-w-[120px] truncate">{d.type?.name ?? '—'}</td>
+                  <tr key={d.id} className={`border-b border-[#F1F5F9] last:border-0 transition-colors ${isEditing ? 'bg-[#EFF6FF]' : 'hover:bg-[#F8FAFC]'}`}>
+                    <td className="px-4 py-2 max-w-[150px]">
+                      {isEditing && eq ? (
+                        <select value={eq.typeId} onChange={e => {
+                            const val = e.target.value
+                            setEditQual({ ...eq, typeId: val })
+                            handleSaveQual(eq.id, val, eq.year, eq.month)
+                          }}
+                          style={{ fontSize: '12px', border: '1px solid #BFDBFE', borderRadius: '5px', padding: '3px 6px', background: '#fff', outline: 'none', maxWidth: '130px' }}>
+                          <option value="">— Aucun —</option>
+                          {docTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        </select>
+                      ) : (
+                        <button onClick={openEdit} className="edit-cell-btn" style={{ background: 'none', border: 'none', padding: '2px 4px', cursor: 'pointer', textAlign: 'left', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {d.type
+                            ? <span className="text-xs text-[#64748B]">{d.type.name}</span>
+                            : <span style={{ fontSize: '11px', fontWeight: 600, padding: '1px 6px', borderRadius: '4px', background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A' }}>Non qualifié</span>
+                          }
+                          <Pencil size={10} className="edit-cell-icon" style={{ color: '#CBD5E1', flexShrink: 0 }} />
+                        </button>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-xs font-medium text-[#0F172A] max-w-[180px] truncate" title={d.filename ?? undefined}>{d.filename ?? '—'}</td>
-                    <td className="px-4 py-3 text-xs text-[#64748B] whitespace-nowrap">{formatPeriod(d.year, d.months)}</td>
+                    <td className="px-4 py-3"><ExtBadge filename={d.filename} /></td>
+                    <td className="px-4 py-3 whitespace-nowrap"><SizeCell kb={d.size_kb} /></td>
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      {isEditing && eq ? (
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                          <select value={eq.year} onChange={e => {
+                              const val = Number(e.target.value)
+                              setEditQual({ ...eq, year: val })
+                              handleSaveQual(eq.id, eq.typeId, val, eq.month)
+                            }}
+                            style={{ fontSize: '12px', border: '1px solid #BFDBFE', borderRadius: '5px', padding: '3px 4px', background: '#fff', outline: 'none' }}>
+                            {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                          </select>
+                          <select value={eq.month} onChange={e => {
+                              const val = e.target.value
+                              setEditQual({ ...eq, month: val })
+                              handleSaveQual(eq.id, eq.typeId, eq.year, val)
+                            }}
+                            style={{ fontSize: '12px', border: '1px solid #BFDBFE', borderRadius: '5px', padding: '3px 4px', background: '#fff', outline: 'none' }}>
+                            <option value="">Tous</option>
+                            {MONTHS_FR.slice(1).map((m, i) => <option key={i+1} value={String(i+1)}>{m}</option>)}
+                          </select>
+                          {savedDoc === d.id && (
+                            <span style={{ fontSize: '11px', fontWeight: 600, color: '#059669', flexShrink: 0 }}>✓</span>
+                          )}
+                          <button onClick={() => setEditQual(null)}
+                            style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #E2E8F0', background: '#fff', color: '#94A3B8', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            title="Annuler">✕</button>
+                        </div>
+                      ) : (
+                        <button onClick={openEdit} className="edit-cell-btn" style={{ background: 'none', border: 'none', padding: '2px 4px', cursor: 'pointer', fontSize: '12px', color: '#64748B', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {formatPeriod(d.year, d.months)}
+                          <Pencil size={10} className="edit-cell-icon" style={{ color: '#CBD5E1', flexShrink: 0 }} />
+                        </button>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600, background: cfg.bg, color: cfg.text, border: `1px solid ${cfg.border}` }}>{cfg.label}</span>
                     </td>
                     <td className="px-4 py-3 text-xs text-[#94A3B8] whitespace-nowrap">{new Date(d.created_at).toLocaleDateString('fr-FR')}</td>
                     <td className="px-4 py-3">
-                      {d.storage_path && (
-                        <button
-                          title="Télécharger"
-                          disabled={downloading === d.id}
-                          onClick={() => handleDownload(d)}
-                          style={{ width: '24px', height: '24px', border: '1px solid #E2E8F0', borderRadius: '5px', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1D4ED8', opacity: downloading === d.id ? 0.4 : 1 }}
-                        >
-                          <Download size={11} strokeWidth={2} />
-                        </button>
-                      )}
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {d.storage_path && <ActionBtn title="Visualiser" color="#1D4ED8" loading={busy} onClick={() => handleView(d)}><Eye size={11} strokeWidth={2} /></ActionBtn>}
+                        {d.storage_path && <ActionBtn title="Télécharger" color="#64748B" loading={busy} onClick={() => handleDownload(d)}><Download size={11} strokeWidth={2} /></ActionBtn>}
+                        {(d.status === 'pending' || d.status === 'draft') && (
+                          <ActionBtn title="Supprimer" color="#DC2626" loading={busy} onClick={() => setDeleteConfirm(d)}>
+                            <Trash2 size={11} strokeWidth={2} />
+                          </ActionBtn>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
@@ -179,16 +469,47 @@ export default function MesDocumentsPage() {
           </table>
         </div>
       )}
+
+      {!docsLoading && (
+        <div className="flex items-center justify-between mt-4">
+          <div className="flex items-center gap-2 text-sm text-[#64748B]">
+            <span>Afficher</span>
+            <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value) as 10 | 20); setPage(0) }}
+              className="text-sm border border-[#E2E8F0] rounded-md px-2 py-1 bg-white text-[#0F172A] focus:outline-none focus:ring-1 focus:ring-[#1D4ED8]">
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+            </select>
+            <span>par page</span>
+          </div>
+          {total > 0 && (
+            <div className="flex items-center gap-3 text-sm text-[#64748B]">
+              <span>{from}–{to} sur {total}</span>
+              <div className="flex gap-1">
+                <button disabled={page === 0} onClick={() => setPage(p => p - 1)}
+                  style={{ width: '28px', height: '28px', border: '1px solid #E2E8F0', borderRadius: '6px', background: '#fff', cursor: page === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: page === 0 ? '#CBD5E1' : '#64748B' }}>
+                  <ChevronLeft size={14} />
+                </button>
+                <button disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}
+                  style={{ width: '28px', height: '28px', border: '1px solid #E2E8F0', borderRadius: '6px', background: '#fff', cursor: page >= totalPages - 1 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: page >= totalPages - 1 ? '#CBD5E1' : '#64748B' }}>
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
-function ClientDocCard({ doc: d, downloading, onDownload }: {
-  doc: DocRow
-  downloading: string | null
-  onDownload: (d: DocRow) => void
+/* ─── DocCard (Kanban) ───────────────────────────────────────── */
+
+function DocCard({ doc: d, acting, onView, onDownload }: {
+  doc: DocRow; acting: string | null
+  onView: (d: DocRow) => void; onDownload: (d: DocRow) => void
 }) {
-  const cfg = STATUS_CFG[d.status]
+  const cfg  = STATUS_CFG[d.status]
+  const busy = acting === d.id
   return (
     <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '6px' }}>
@@ -197,18 +518,22 @@ function ClientDocCard({ doc: d, downloading, onDownload }: {
             {d.filename ?? '—'}
           </div>
           <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '2px' }}>
-            {d.type?.name ?? '—'} · {formatPeriod(d.year, d.months)}
+            {d.type
+              ? d.type.name
+              : <span style={{ fontSize: '10px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A' }}>Non qualifié</span>
+            }
+            {' · '}{d.year}
+          </div>
+          <div style={{ fontSize: '10px', color: '#CBD5E1', marginTop: '1px', display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <ExtBadge filename={d.filename} />
+            <SizeCell kb={d.size_kb} />
           </div>
         </div>
         {d.storage_path && (
-          <button
-            title="Télécharger"
-            disabled={downloading === d.id}
-            onClick={() => onDownload(d)}
-            style={{ width: '22px', height: '22px', flexShrink: 0, border: '1px solid #E2E8F0', borderRadius: '4px', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1D4ED8', opacity: downloading === d.id ? 0.4 : 1 }}
-          >
-            <Download size={10} strokeWidth={2} />
-          </button>
+          <div style={{ display: 'flex', gap: '3px', flexShrink: 0 }}>
+            <ActionBtn title="Visualiser" color="#1D4ED8" loading={busy} onClick={() => onView(d)}><Eye size={10} strokeWidth={2} /></ActionBtn>
+            <ActionBtn title="Télécharger" color="#64748B" loading={busy} onClick={() => onDownload(d)}><Download size={10} strokeWidth={2} /></ActionBtn>
+          </div>
         )}
       </div>
       {d.notes && (
@@ -217,14 +542,28 @@ function ClientDocCard({ doc: d, downloading, onDownload }: {
         </div>
       )}
       {d.status === 'rejected' && (
-        <button
-          onClick={() => window.location.href = '/mes-documents/nouveau'}
-          style={{ width: '100%', padding: '5px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '5px', fontSize: '11px', fontWeight: 600, color: '#991b1b', cursor: 'pointer', fontFamily: 'inherit' }}
-        >
+        <button onClick={() => window.location.href = '/mes-documents/nouveau'}
+          style={{ width: '100%', padding: '5px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '5px', fontSize: '11px', fontWeight: 600, color: '#991b1b', cursor: 'pointer', fontFamily: 'inherit' }}>
           Redéposer →
         </button>
       )}
-      <div style={{ fontSize: '10px', color: '#CBD5E1' }}>{new Date(d.created_at).toLocaleDateString('fr-FR')}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ padding: '2px 7px', borderRadius: '4px', fontSize: '10px', fontWeight: 600, background: cfg.bg, color: cfg.text, border: `1px solid ${cfg.border}` }}>{cfg.label}</span>
+        <span style={{ fontSize: '10px', color: '#CBD5E1' }}>{new Date(d.created_at).toLocaleDateString('fr-FR')}</span>
+      </div>
     </div>
+  )
+}
+
+/* ─── ActionBtn ──────────────────────────────────────────────── */
+
+function ActionBtn({ title, color, loading, onClick, children }: {
+  title: string; color: string; loading?: boolean; onClick: () => void; children: React.ReactNode
+}) {
+  return (
+    <button title={title} disabled={loading} onClick={onClick}
+      style={{ width: '24px', height: '24px', border: '1px solid #E2E8F0', borderRadius: '5px', background: '#fff', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color, opacity: loading ? 0.4 : 1 }}>
+      {children}
+    </button>
   )
 }

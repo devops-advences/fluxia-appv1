@@ -10,7 +10,7 @@ import { type LoadedFile, type Qualification, type WizardContext, qualKey, getAl
 
 type Props = WizardContext
 
-export default function UploadWizard({ firmSlug, customerId, customerName, cabinetName, existingFilenames, accessToken }: Props) {
+export default function UploadWizard({ customerId, customerName, cabinetName, existingFilenames, accessToken }: Props) {
   const router = useRouter()
 
   const [step,         setStep]         = useState<1 | 2 | 3>(1)
@@ -119,7 +119,6 @@ export default function UploadWizard({ firmSlug, customerId, customerName, cabin
     try {
       const formData = new FormData()
       formData.append('customerId', customerId)
-      formData.append('firmSlug', firmSlug)
       formData.append('raw', 'true')
       for (const f of files) formData.append('files', f.file)
       const res = await fetch('/api/customer/documents/submit', {
@@ -137,7 +136,7 @@ export default function UploadWizard({ firmSlug, customerId, customerName, cabin
     } finally {
       setSubmittingRaw(false)
     }
-  }, [files, customerId, firmSlug, submittingRaw, accessToken])
+  }, [files, customerId, submittingRaw, accessToken])
 
   const handleSubmit = useCallback(async () => {
     setSubmitting(true)
@@ -145,7 +144,6 @@ export default function UploadWizard({ firmSlug, customerId, customerName, cabin
     try {
       const formData = new FormData()
       formData.append('customerId', customerId)
-      formData.append('firmSlug', firmSlug)
 
       const metaArray: { type: string; year: string; month: string; note: string; originalName: string }[] = []
 
@@ -192,7 +190,7 @@ export default function UploadWizard({ firmSlug, customerId, customerName, cabin
     } finally {
       setSubmitting(false)
     }
-  }, [allDocs, files, quals, customerId, firmSlug, accessToken])
+  }, [allDocs, files, quals, customerId, accessToken])
 
   if (done) {
     return (

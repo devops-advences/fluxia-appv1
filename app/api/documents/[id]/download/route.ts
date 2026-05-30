@@ -42,13 +42,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (!uc) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
   }
 
-  // Get firm slug for bucket name
-  const { data: firm } = await service
-    .from('firm').select('slug').eq('id', doc.firm_id).single()
-  if (!firm) return NextResponse.json({ error: 'Cabinet introuvable' }, { status: 500 })
-
   const { data: signed } = await service.storage
-    .from(firm.slug)
+    .from(doc.firm_id)
     .createSignedUrl(doc.storage_path, 60)
 
   if (!signed?.signedUrl) return NextResponse.json({ error: 'Impossible de générer le lien' }, { status: 500 })

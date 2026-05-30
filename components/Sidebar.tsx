@@ -47,9 +47,10 @@ type Props = {
   firmName: string
   countryCode: string
   userName: string
+  logoUrl?: string | null
 }
 
-export default function Sidebar({ firmName, countryCode, userName }: Props) {
+export default function Sidebar({ firmName, countryCode, userName, logoUrl }: Props) {
   const pathname = usePathname()
   const router = useRouter()
 
@@ -60,11 +61,15 @@ export default function Sidebar({ firmName, countryCode, userName }: Props) {
 
   return (
     <aside className="w-56 h-screen flex flex-col bg-white border-r border-[#E2E8F0] fixed left-0 top-0">
-      {/* Firm name */}
-      <div className="px-4 py-4 border-b border-[#E2E8F0]">
-        <div className="flex items-center gap-2">
-          <span className="text-base">{COUNTRY_FLAGS[countryCode] ?? ''}</span>
+      {/* Firm identity */}
+      <div className="px-4 py-3 border-b border-[#E2E8F0] flex flex-col items-center gap-1.5">
+        {logoUrl && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={logoUrl} alt={firmName} className="max-h-8 max-w-[160px] object-contain" />
+        )}
+        <div className="flex items-center gap-1.5">
           <span className="text-sm font-semibold text-[#0F172A] truncate">{firmName}</span>
+          <span className="text-sm">{COUNTRY_FLAGS[countryCode] ?? ''}</span>
         </div>
       </div>
 

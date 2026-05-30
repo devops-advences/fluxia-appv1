@@ -103,6 +103,11 @@ export default function MonCabinetPage() {
   const [saved, setSaved]       = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
+  // logo
+  const [logoUrl, setLogoUrl]       = useState<string | null>(null)
+  const [logoUploading, setLogoUploading] = useState(false)
+  const [logoError, setLogoError]   = useState<string | null>(null)
+
   // invite form
   const [inviteEmail, setInviteEmail]   = useState('')
   const [inviteAdmin, setInviteAdmin]   = useState(false)
@@ -128,7 +133,7 @@ export default function MonCabinetPage() {
       setIsAdmin(!!ud.admin)
 
       const [{ data: firmData }, { data: usersData }, { data: invitesData }] = await Promise.all([
-        supabase.from('firm').select('*').eq('id', ud.firm_id).single(),
+        supabase.from('firm').select('*, logo_url').eq('id', ud.firm_id).single(),
         supabase
           .from('user_data')
           .select('id, first_name, last_name, admin, active, created_at')
@@ -145,8 +150,9 @@ export default function MonCabinetPage() {
       ])
 
       if (firmData) {
-        const f = firmData as FirmData
+        const f = firmData as FirmData & { logo_url?: string | null }
         setFirm(f)
+        setLogoUrl(f.logo_url ?? null)
         setForm({
           name:                f.name,
           email:               f.email               ?? '',
@@ -192,6 +198,36 @@ export default function MonCabinetPage() {
     if (error) setSaveError('Erreur lors de la sauvegarde')
     else setSaved(true)
     setSaving(false)
+  }
+
+  async function handleLogoUpload(file: File) {
+    setLogoUploading(true); setLogoError(null)
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    const form = new FormData()
+    form.append('logo', file)
+    const res = await fetch('/api/firm/logo', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: form,
+    })
+    if (res.ok) {
+      const { logo_url } = await res.json() as { logo_url: string }
+      setLogoUrl(logo_url)
+    } else {
+      const { error } = await res.json() as { error: string }
+      setLogoError(error ?? 'Erreur lors de l\'upload')
+    }
+    setLogoUploading(false)
+  }
+
+  async function handleLogoDelete() {
+    setLogoUploading(true); setLogoError(null)
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    await fetch('/api/firm/logo', { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } })
+    setLogoUrl(null)
+    setLogoUploading(false)
   }
 
   async function handleInvite() {
@@ -283,6 +319,40 @@ export default function MonCabinetPage() {
       {/* Données générales */}
       {tab === 'donnees' && (
         <div className="flex flex-col gap-4">
+
+          {/* Logo */}
+          {isAdmin && (
+            <div className="bg-white border border-[#E2E8F0] rounded-xl p-6">
+              <p className="text-sm font-semibold text-[#0F172A] mb-4">Logo du cabinet</p>
+              <div className="flex items-center gap-6">
+                <div className="w-32 h-14 border border-[#E2E8F0] rounded-lg flex items-center justify-center bg-[#F8FAFC] shrink-0 overflow-hidden">
+                  {logoUrl
+                    ? <img src={logoUrl} alt="Logo" className="max-h-12 max-w-[120px] object-contain" />
+                    : <span className="text-xs text-[#94A3B8]">Aucun logo</span>
+                  }
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="cursor-pointer">
+                    <span className="px-4 py-1.5 text-sm font-medium border border-[#E2E8F0] rounded-lg bg-white text-[#0F172A] hover:bg-[#F8FAFC] transition-colors inline-block">
+                      {logoUploading ? 'Envoi…' : logoUrl ? 'Changer le logo' : 'Ajouter un logo'}
+                    </span>
+                    <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden"
+                      disabled={logoUploading}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f) }} />
+                  </label>
+                  {logoUrl && (
+                    <button onClick={handleLogoDelete} disabled={logoUploading}
+                      className="text-xs text-[#DC2626] hover:underline text-left disabled:opacity-40">
+                      Supprimer le logo
+                    </button>
+                  )}
+                  {logoError && <span className="text-xs text-[#DC2626]">{logoError}</span>}
+                  <span className="text-xs text-[#94A3B8]">PNG, JPG, SVG, WEBP · max 2 Mo</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           <Section title="Identité">
             <Field label="Nom du cabinet"    value={form.name         ?? ''} onChange={set('name')} />
             <Field label="Référence"          value={firm.slug}              readOnly />

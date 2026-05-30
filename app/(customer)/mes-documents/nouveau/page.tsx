@@ -25,7 +25,7 @@ export default function NouveauDocumentPage() {
       if (!ud?.firm_id || ud.role !== 'customer') { router.push('/mes-documents'); return }
 
       const [firmRes, ucRes] = await Promise.all([
-        supabase.from('firm').select('slug, name').eq('id', ud.firm_id).single(),
+        supabase.from('firm').select('name').eq('id', ud.firm_id).single(),
         supabase.from('user_customer').select('customer_id').eq('user_id', session.user.id).limit(1).single(),
       ])
       if (!active) return
@@ -34,7 +34,7 @@ export default function NouveauDocumentPage() {
       const customerId = ucRes.data.customer_id
       const [custRes, docsRes] = await Promise.all([
         supabase.from('customer').select('name').eq('id', customerId).single(),
-        supabase.from('document').select('filename').eq('customer_id', customerId).eq('file', true).not('filename', 'is', null),
+        supabase.from('document').select('filename').eq('customer_id', customerId).not('filename', 'is', null),
       ])
       if (!active) return
       if (!custRes.data) { setError('Client introuvable.'); setLoading(false); return }
@@ -44,7 +44,6 @@ export default function NouveauDocumentPage() {
         .filter((n): n is string => n !== null)
 
       setCtx({
-        firmSlug:          firmRes.data.slug,
         customerId,
         customerName:      custRes.data.name,
         cabinetName:       firmRes.data.name,
