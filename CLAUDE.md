@@ -77,6 +77,12 @@ lib/
 - Les formulaires de création et d'édition sont identiques (mêmes champs, même layout, mêmes sections)
 - Pas de form "court" à la création suivi d'un form "long" en édition — une seule UX cohérente
 
+## UX — Suppressions
+- Toute action destructive doit avoir un mécanisme de confirmation visible — jamais de suppression directe au premier clic
+- **Dans un tableau** : icône `Trash2` (gris → rouge au hover) → clic → confirmation inline sur la ligne : `"Supprimer ?"` + bouton `"Confirmer"` (rouge) + `"Annuler"`
+- **Pour fichiers / documents** : modal dédiée (`DeleteConfirmModal`)
+- Jamais de `window.confirm()` — UX native non contrôlable
+
 ## Ce qu'on ne fait PAS
 - Pas de mock de la base de données pour les tests
 - Pas de `any` TypeScript

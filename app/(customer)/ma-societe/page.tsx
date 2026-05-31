@@ -1,12 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
 import type { UserCustomerRow } from '@/lib/db-types'
 
 type CustomerData = {
   id: string
   name: string
+  firm_id: string
   email: string | null
   phone: string | null
   website: string | null
@@ -36,7 +38,18 @@ type InviteRow = {
   created_at: string
 }
 
-type Tab = 'donnees' | 'utilisateurs'
+type Tab = 'donnees' | 'utilisateurs' | 'comptes'
+
+type BankRow     = { id: string; name: string; logo_url: string | null }
+type BankAccount = { id: string; bank_id: string; bank: BankRow; type: string; name: string | null; iban: string | null; bic: string | null; currency_code: string }
+
+const TYPE_LABELS: Record<string, string> = { current: 'Compte courant', savings: 'Épargne', term: 'Dépôt à terme', foreign: 'Devises' }
+const CURRENCIES = ['EUR', 'USD', 'GBP', 'MAD', 'TND', 'DZD', 'CHF']
+function maskIban(iban: string | null) {
+  if (!iban) return '—'
+  const c = iban.replace(/\s/g, '')
+  return c.length <= 8 ? iban : c.slice(0, 4) + ' •••• •••• ' + c.slice(-4)
+}
 
 function Field({ label, value, readOnly, onChange }: {
   label: string; value: string; readOnly?: boolean; onChange?: (v: string) => void
@@ -85,6 +98,22 @@ export default function MaSocietePage() {
   const [togglingAdmin, setTogglingAdmin]   = useState<string | null>(null)
   const [togglingActive, setTogglingActive] = useState<string | null>(null)
 
+  const [banks, setBanks]                   = useState<BankRow[]>([])
+  const [bankAccounts, setBankAccounts]     = useState<BankAccount[]>([])
+  const [customerId, setCustomerId]         = useState<string | null>(null)
+  const [showAddAccount, setShowAddAccount] = useState(false)
+  const [addForm, setAddForm]               = useState({ bank_id: '', type: 'current', name: '', iban: '', bic: '', currency_code: 'EUR' })
+  const [addSaving, setAddSaving]           = useState(false)
+  const [deletingAccount, setDeletingAccount]           = useState<string | null>(null)
+  const [confirmDeleteAccount, setConfirmDeleteAccount] = useState<string | null>(null)
+
+  // Auto-sélectionne la première banque dès qu'elles chargent
+  useEffect(() => {
+    if (banks.length > 0 && !addForm.bank_id) {
+      setAddForm(f => ({ ...f, bank_id: banks[0].id }))
+    }
+  }, [banks])
+
   useEffect(() => {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
@@ -97,7 +126,7 @@ export default function MaSocietePage() {
       setIsAdmin(!!uc.admin)
 
       const [{ data: custData }, { data: ucData }, { data: invData }] = await Promise.all([
-        supabase.from('customer').select('id, name, email, phone, website, address, address_2, city, postal_code, country_code, tax_ref_main, tax_ref_vat').eq('id', uc.customer_id).single(),
+        supabase.from('customer').select('id, name, firm_id, email, phone, website, address, address_2, city, postal_code, country_code, tax_ref_main, tax_ref_vat').eq('id', uc.customer_id).single(),
         supabase.from('user_customer').select('admin, created_at, user_data:user_id(id, first_name, last_name, active)').eq('customer_id', uc.customer_id),
         supabase.from('user_invitation').select('id, email, status, expires_at, created_at').eq('customer_id', uc.customer_id).eq('status', 'pending').gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       ])
@@ -106,6 +135,20 @@ export default function MaSocietePage() {
         const c = custData as CustomerData
         setCustomer(c)
         setForm({ name: c.name, email: c.email ?? '', phone: c.phone ?? '', website: c.website ?? '', address: c.address ?? '', address_2: c.address_2 ?? '', city: c.city ?? '', postal_code: c.postal_code ?? '', tax_ref_main: c.tax_ref_main ?? '', tax_ref_vat: c.tax_ref_vat ?? '' })
+
+        // Banques + comptes
+        setCustomerId(uc.customer_id)
+        const [{ data: banksData }, { data: accountsData }] = await Promise.all([
+          supabase.from('bank').select('id, name, logo_url').eq('country_code', c.country_code).eq('active', true).order('rank'),
+          supabase.from('customer_bank_account')
+            .select('id, bank_id, type, name, iban, bic, currency_code, bank:bank_id(id, name, logo_url)')
+            .eq('customer_id', uc.customer_id).order('created_at'),
+        ])
+        if (banksData) {
+          setBanks(banksData as BankRow[])
+          setAddForm(f => ({ ...f, bank_id: banksData[0]?.id ?? '' }))
+        }
+        if (accountsData) setBankAccounts(accountsData as unknown as BankAccount[])
       }
 
       if (ucData) {
@@ -200,6 +243,30 @@ export default function MaSocietePage() {
     return (val: string) => { setForm(f => ({ ...f, [key]: val })); setSaved(false) }
   }
 
+  async function handleAddAccount() {
+    if (!customerId || !customer?.firm_id || !addForm.bank_id) return
+    setAddSaving(true)
+    const { data, error } = await supabase
+      .from('customer_bank_account')
+      .insert({ firm_id: customer.firm_id, customer_id: customerId, bank_id: addForm.bank_id, type: addForm.type, name: addForm.name || null, iban: addForm.iban || null, bic: addForm.bic || null, currency_code: addForm.currency_code })
+      .select('id, bank_id, type, name, iban, bic, currency_code, bank:bank_id(id, name, logo_url)')
+      .single()
+    if (!error && data) {
+      setBankAccounts(prev => [...prev, data as unknown as BankAccount])
+      setAddForm(f => ({ ...f, name: '', iban: '', bic: '', type: 'current', currency_code: 'EUR' }))
+      setShowAddAccount(false)
+    }
+    setAddSaving(false)
+  }
+
+  async function handleDeleteAccount(accountId: string) {
+    setDeletingAccount(accountId)
+    setConfirmDeleteAccount(null)
+    const { error } = await supabase.from('customer_bank_account').delete().eq('id', accountId)
+    if (!error) setBankAccounts(prev => prev.filter(a => a.id !== accountId))
+    setDeletingAccount(null)
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center h-40">
       <div className="w-5 h-5 border-2 border-[#1D4ED8] border-t-transparent rounded-full animate-spin" />
@@ -213,8 +280,8 @@ export default function MaSocietePage() {
       <h1 className="text-xl font-semibold text-[#0F172A] mb-6">Ma société</h1>
 
       <div className="flex border-b border-[#E2E8F0] mb-6">
-        {(['donnees', 'utilisateurs'] as Tab[]).map(t => {
-          const labels: Record<Tab, string> = { donnees: 'Données générales', utilisateurs: 'Utilisateurs' }
+        {(['donnees', 'utilisateurs', 'comptes'] as Tab[]).map(t => {
+          const labels: Record<Tab, string> = { donnees: 'Données générales', utilisateurs: 'Utilisateurs', comptes: 'Comptes bancaires' }
           return (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t ? 'border-[#1D4ED8] text-[#1D4ED8]' : 'border-transparent text-[#64748B] hover:text-[#0F172A]'}`}>
@@ -377,6 +444,127 @@ export default function MaSocietePage() {
                 {inviteError && <p className="text-sm text-[#DC2626] mt-2">{inviteError}</p>}
               </div>
             </>
+          )}
+        </div>
+      )}
+
+      {/* Comptes bancaires */}
+      {tab === 'comptes' && (
+        <div className="flex flex-col gap-4">
+          <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
+            {bankAccounts.length === 0 ? (
+              <div className="px-5 py-10 text-center text-sm text-[#94A3B8]">Aucun compte bancaire enregistré.</div>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                    {['Banque', 'Type', 'Libellé', 'IBAN', 'BIC', 'Devise', ''].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {bankAccounts.map((a, i) => (
+                    <tr key={a.id} className={i < bankAccounts.length - 1 ? 'border-b border-[#E2E8F0]' : ''}>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          {a.bank.logo_url ? (
+                            <img src={a.bank.logo_url} alt={a.bank.name} className="w-6 h-6 object-contain rounded shrink-0" />
+                          ) : (
+                            <div className="w-6 h-6 rounded bg-[#EFF6FF] flex items-center justify-center text-[9px] font-bold text-[#1D4ED8] shrink-0">
+                              {a.bank.name.charAt(0)}
+                            </div>
+                          )}
+                          <span className="text-sm text-[#0F172A]">{a.bank.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-[#64748B]">{TYPE_LABELS[a.type] ?? a.type}</td>
+                      <td className="px-4 py-3 text-sm text-[#0F172A]">{a.name ?? '—'}</td>
+                      <td className="px-4 py-3 text-sm font-mono text-[#64748B]">{maskIban(a.iban)}</td>
+                      <td className="px-4 py-3 text-sm font-mono text-[#64748B]">{a.bic ?? '—'}</td>
+                      <td className="px-4 py-3 text-sm text-[#64748B]">{a.currency_code}</td>
+                      <td className="px-4 py-3 text-right">
+                        {confirmDeleteAccount === a.id ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="text-xs text-[#64748B]">Supprimer ?</span>
+                            <button onClick={() => handleDeleteAccount(a.id)} disabled={deletingAccount === a.id}
+                              className="text-xs px-2 py-0.5 bg-[#DC2626] text-white rounded hover:bg-[#b91c1c] disabled:opacity-40 transition-colors">
+                              {deletingAccount === a.id ? '…' : 'Confirmer'}
+                            </button>
+                            <button onClick={() => setConfirmDeleteAccount(null)}
+                              className="text-xs text-[#64748B] hover:text-[#0F172A]">Annuler</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setConfirmDeleteAccount(a.id)}
+                            className="text-[#94A3B8] hover:text-[#DC2626] transition-colors p-1 rounded">
+                            <Trash2 size={14} strokeWidth={1.75} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {showAddAccount ? (
+            <div className="bg-white border border-[#E2E8F0] rounded-xl p-6 flex flex-col gap-4">
+              <p className="text-sm font-semibold text-[#0F172A]">Nouveau compte</p>
+              <div className="grid grid-cols-3 gap-x-6 gap-y-4">
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">Banque</span>
+                  <select value={addForm.bank_id} onChange={e => setAddForm(f => ({ ...f, bank_id: e.target.value }))}
+                    className="text-sm px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#0F172A] outline-none focus:border-[#1D4ED8] focus:ring-1 focus:ring-[#1D4ED8]">
+                    {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">Type</span>
+                  <select value={addForm.type} onChange={e => setAddForm(f => ({ ...f, type: e.target.value }))}
+                    className="text-sm px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#0F172A] outline-none focus:border-[#1D4ED8] focus:ring-1 focus:ring-[#1D4ED8]">
+                    {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">Devise</span>
+                  <select value={addForm.currency_code} onChange={e => setAddForm(f => ({ ...f, currency_code: e.target.value }))}
+                    className="text-sm px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#0F172A] outline-none focus:border-[#1D4ED8] focus:ring-1 focus:ring-[#1D4ED8]">
+                    {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">Libellé</span>
+                  <input value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))}
+                    placeholder="ex. Compte principal"
+                    className="text-sm px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#0F172A] outline-none focus:border-[#1D4ED8] focus:ring-1 focus:ring-[#1D4ED8]" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">IBAN</span>
+                  <input value={addForm.iban} onChange={e => setAddForm(f => ({ ...f, iban: e.target.value }))}
+                    placeholder="FR76 …"
+                    className="text-sm px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#0F172A] outline-none focus:border-[#1D4ED8] focus:ring-1 focus:ring-[#1D4ED8] font-mono" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">BIC / SWIFT</span>
+                  <input value={addForm.bic} onChange={e => setAddForm(f => ({ ...f, bic: e.target.value }))}
+                    placeholder="BNPAFRPP"
+                    className="text-sm px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#0F172A] outline-none focus:border-[#1D4ED8] focus:ring-1 focus:ring-[#1D4ED8] font-mono" />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button onClick={handleAddAccount} disabled={addSaving || !addForm.bank_id}
+                  className="px-5 py-2 bg-[#1D4ED8] text-white text-sm font-medium rounded-lg hover:bg-[#1e40af] disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                  {addSaving ? 'Enregistrement…' : 'Ajouter'}
+                </button>
+                <button onClick={() => setShowAddAccount(false)} className="text-sm text-[#64748B] hover:text-[#0F172A]">Annuler</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setShowAddAccount(true)}
+              className="self-start px-4 py-2 text-sm font-medium text-[#1D4ED8] border border-[#1D4ED8] rounded-lg hover:bg-[#EFF6FF] transition-colors">
+              + Ajouter un compte
+            </button>
           )}
         </div>
       )}

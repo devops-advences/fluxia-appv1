@@ -125,4 +125,39 @@ test.describe('Ma société — client connecté', () => {
     await expect(page.locator('body')).not.toContainText('Internal Server Error')
     await expect(page.locator('body')).not.toContainText('500')
   })
+
+  test('onglet Comptes bancaires visible', async ({ page }) => {
+    await expect(page.getByRole('button', { name: 'Comptes bancaires' })).toBeVisible({ timeout: 8000 })
+  })
+
+  test('onglet Comptes bancaires — contenu charge sans erreur', async ({ page }) => {
+    await page.getByRole('button', { name: 'Comptes bancaires' }).click()
+    await expect(page.locator('body')).not.toContainText('Internal Server Error')
+    await expect(page.locator('body')).not.toContainText('500')
+  })
+
+  test('onglet Comptes bancaires — bouton Ajouter visible', async ({ page }) => {
+    await page.getByRole('button', { name: 'Comptes bancaires' }).click()
+    await expect(page.getByRole('button', { name: /Ajouter un compte/i })).toBeVisible({ timeout: 8000 })
+  })
+
+  test('onglet Comptes bancaires — formulaire ajout s\'ouvre', async ({ page }) => {
+    await page.getByRole('button', { name: 'Comptes bancaires' }).click()
+    await page.getByRole('button', { name: /Ajouter un compte/i }).click()
+    await expect(page.getByText('Nouveau compte')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('button', { name: /Ajouter/i }).last()).toBeVisible()
+  })
+
+  test('onglet Comptes bancaires — suppression affiche confirmation inline', async ({ page }) => {
+    await page.getByRole('button', { name: 'Comptes bancaires' }).click()
+    const trashBtns = page.locator('button').filter({ has: page.locator('svg') }).filter({ hasText: '' })
+    // Si des comptes existent, le clic sur poubelle affiche "Supprimer ?"
+    const rows = page.locator('tbody tr')
+    if (await rows.count() > 0) {
+      const trashBtn = rows.first().locator('button').last()
+      await trashBtn.click()
+      await expect(page.getByText('Supprimer ?')).toBeVisible({ timeout: 3000 })
+      await expect(page.getByRole('button', { name: 'Annuler' })).toBeVisible()
+    }
+  })
 })
