@@ -11,7 +11,9 @@ import {
   Building2,
   LogOut,
   UserCircle,
+  Inbox,
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
 const COUNTRY_FLAGS: Record<string, string> = {
@@ -24,8 +26,9 @@ const NAV = [
   {
     section: 'GESTION',
     items: [
-      { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-      { label: 'Tâches récurrentes', href: '/taches', icon: CheckSquare },
+      { label: 'Dashboard',         href: '/dashboard', icon: LayoutDashboard },
+      { label: 'Inbox',             href: '/inbox',     icon: Inbox },
+      { label: 'Tâches récurrentes', href: '/taches',   icon: CheckSquare },
     ],
   },
   {
@@ -57,6 +60,20 @@ type Props = {
 export default function Sidebar({ firmName, countryCode, userName, logoUrl, avatarUrl, userInitials }: Props) {
   const pathname = usePathname()
   const router = useRouter()
+  const [unread, setUnread] = useState(0)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) return
+      const uid = session.user.id
+      const { data: userStates } = await supabase.from('user_inbox')
+        .select('inbox_event_id, read_at, deleted_at').eq('user_id', uid)
+      const readOrDeleted = new Set((userStates ?? []).filter(s => s.read_at || s.deleted_at).map(s => s.inbox_event_id))
+      const { count } = await supabase.from('firm_inbox').select('id', { count: 'exact', head: true })
+      const total = count ?? 0
+      setUnread(Math.max(0, total - readOrDeleted.size))
+    })
+  }, [pathname])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -99,6 +116,11 @@ export default function Sidebar({ firmName, countryCode, userName, logoUrl, avat
                     >
                       <Icon size={15} strokeWidth={1.8} />
                       {label}
+                      {href === '/inbox' && unread > 0 && (
+                        <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#1D4ED8] text-white">
+                          {unread > 99 ? '99+' : unread}
+                        </span>
+                      )}
                     </Link>
                   </li>
                 )

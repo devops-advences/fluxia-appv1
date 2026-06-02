@@ -58,7 +58,7 @@ export async function notifyDeposit(p: NotifyDepositParams) {
 
   const resend = new Resend(process.env.RESEND_API_KEY)
   await resend.emails.send({
-    from:    'Fluxia <noreply@advences.com>',
+    from:    'Fluxia <noreply@advences.io>',
     to:      emails,
     subject: `${esc(p.customerName)} a déposé ${n} document${plural ? 's' : ''}`,
     html: `
@@ -114,7 +114,7 @@ export async function notifyStatus(p: NotifyStatusParams) {
 
   const resend = new Resend(process.env.RESEND_API_KEY)
   await resend.emails.send({
-    from:    'Fluxia <noreply@advences.com>',
+    from:    'Fluxia <noreply@advences.io>',
     to:      emails,
     subject: rejected
       ? `${esc(p.firmName)} a rejeté un de vos documents`
@@ -194,7 +194,7 @@ export async function notifyMessage(p: NotifyMessageParams) {
 
   const resend = new Resend(process.env.RESEND_API_KEY)
   await resend.emails.send({
-    from:    'Fluxia <noreply@advences.com>',
+    from:    'Fluxia <noreply@advences.io>',
     to:      emails,
     subject: `Nouveau message de ${esc(p.senderName)} sur Fluxia`,
     html: `
@@ -230,7 +230,7 @@ export async function notifyInvitation(p: NotifyInvitationParams) {
 
   const resend = new Resend(process.env.RESEND_API_KEY)
   await resend.emails.send({
-    from:    'Fluxia <noreply@advences.com>',
+    from:    'Fluxia <noreply@advences.io>',
     to:      p.email,
     subject: `${esc(p.firmName)} vous invite sur Fluxia`,
     html: `

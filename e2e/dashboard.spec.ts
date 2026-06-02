@@ -33,6 +33,7 @@ test.describe('Dashboard — cabinet connecté', () => {
     await expect(page.locator('aside a[href="/livrables"]')).toBeVisible()
     await expect(page.locator('aside a[href="/clients"]')).toBeVisible()
     await expect(page.locator('aside a[href="/mon-cabinet"]')).toBeVisible()
+    await expect(page.locator('aside a[href="/inbox"]')).toBeVisible()
   })
 
   test('Dashboard est le lien actif sur /dashboard', async ({ page }) => {

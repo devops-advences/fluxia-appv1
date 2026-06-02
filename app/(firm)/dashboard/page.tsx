@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Clock, FileCheck, Users } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Circle, Clock, FileCheck, Users } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
 import { formatPeriod, timeAgo, MONTHS_FR } from '@/lib/format'
 import type { RawDepositRow, RawLateTaskRow } from '@/lib/db-types'
@@ -31,6 +31,13 @@ type LateTaskRow = {
   customer_name: string
 }
 
+type OnboardingData = {
+  firmName: string | null
+  firmLogo: string | null
+  collabCount: number
+  clientCount: number
+}
+
 export default function DashboardPage() {
   const router   = useRouter()
   const [firmId, setFirmId]       = useState<string | null>(null)
@@ -38,6 +45,7 @@ export default function DashboardPage() {
   const [deposits, setDeposits]   = useState<DepositRow[]>([])
   const [lateTasks, setLateTasks] = useState<LateTaskRow[]>([])
   const [loading, setLoading]     = useState(true)
+  const [onboarding, setOnboarding] = useState<OnboardingData | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -54,6 +62,17 @@ export default function DashboardPage() {
       const monthStart = new Date(year, now.getMonth(), 1).toISOString()
 
       setFirmId(fid)
+
+      const [{ data: firmData }, { count: collabCount }] = await Promise.all([
+        supabase.from('firm').select('name, logo_url').eq('id', fid).single(),
+        supabase.from('user_data').select('id', { count: 'exact', head: true }).eq('firm_id', fid).eq('role', 'firm'),
+      ])
+      setOnboarding({
+        firmName:    (firmData as { name: string | null; logo_url: string | null } | null)?.name ?? null,
+        firmLogo:    (firmData as { name: string | null; logo_url: string | null } | null)?.logo_url ?? null,
+        collabCount: collabCount ?? 0,
+        clientCount: 0,
+      })
 
       const [
         { count: pending },
@@ -88,12 +107,14 @@ export default function DashboardPage() {
           .order('month', { ascending: true }).limit(8),
       ])
 
+      const clientCount = clients ?? 0
       setKpis({
         pending:        pending ?? 0,
         processedMonth: processedMonth ?? 0,
-        clients:        clients ?? 0,
+        clients:        clientCount,
         lateTasks:      lateCnt ?? 0,
       })
+      setOnboarding(prev => prev ? { ...prev, clientCount } : prev)
 
       const typedDeposits = (rawDeposits ?? []) as unknown as RawDepositRow[]
       setDeposits(typedDeposits.map(d => ({
@@ -126,8 +147,36 @@ export default function DashboardPage() {
     )
   }
 
+  const obSteps = onboarding ? [
+    { label: 'Profil cabinet renseigné',  done: !!(onboarding.firmName && onboarding.firmLogo), href: '/mon-cabinet' },
+    { label: 'Au moins un collaborateur', done: onboarding.collabCount > 1,                     href: '/mon-cabinet' },
+    { label: 'Premier client créé',       done: onboarding.clientCount > 0,                     href: '/clients' },
+  ] : []
+  const obAllDone = obSteps.length > 0 && obSteps.every(s => s.done)
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
+
+      {/* Onboarding — disparaît quand tout est fait */}
+      {onboarding && !obAllDone && (
+        <div className="mb-6 bg-white border border-[#E2E8F0] rounded-xl p-5">
+          <p className="text-sm font-semibold text-[#0F172A] mb-1">Démarrage de votre cabinet</p>
+          <p className="text-xs text-[#64748B] mb-4">Complétez ces étapes pour bien débuter sur FluxIA.</p>
+          <div className="flex flex-col gap-2">
+            {obSteps.map(step => (
+              <button key={step.label} onClick={() => router.push(step.href)}
+                className="flex items-center gap-3 text-left hover:bg-[#F8FAFC] rounded-lg px-3 py-2 transition-colors group">
+                {step.done
+                  ? <CheckCircle2 size={16} className="text-[#059669] shrink-0" />
+                  : <Circle       size={16} className="text-[#CBD5E1] shrink-0" />}
+                <span className={`text-sm ${step.done ? 'line-through text-[#94A3B8]' : 'text-[#0F172A] group-hover:text-[#1D4ED8]'}`}>
+                  {step.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-4 gap-4 mb-8">

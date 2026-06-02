@@ -44,5 +44,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Erreur lors de l\'activation du compte.' }, { status: 500 })
   }
 
+  // Mettre à jour le score onboarding du client si c'est un user customer
+  if (inv.customer_id) {
+    await service.rpc('refresh_onboarding_score', { p_customer_id: inv.customer_id })
+  }
+
   return NextResponse.json({ ok: true })
 }

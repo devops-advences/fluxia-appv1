@@ -118,6 +118,7 @@ export default function MonCabinetPage() {
   const [inviteSent, setInviteSent]     = useState(false)
   const [inviteError, setInviteError]   = useState('')
   const [cancelling, setCancelling]       = useState<string | null>(null)
+  const [resending, setResending]         = useState<string | null>(null)
   const [togglingAdmin, setTogglingAdmin] = useState<string | null>(null)
   const [togglingActive, setTogglingActive] = useState<string | null>(null)
 
@@ -262,6 +263,15 @@ export default function MonCabinetPage() {
       setInviteSent(true)
       setInviteEmail('')
       setInviteAdmin(false)
+      // Envoyer l'email d'invitation
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.access_token) {
+        fetch('/api/invite/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+          body: JSON.stringify({ invitationId: data.id }),
+        }).catch(() => {})
+      }
     }
     setInviting(false)
   }
@@ -294,6 +304,19 @@ export default function MonCabinetPage() {
       .eq('id', id)
     if (!error) setInvites(prev => prev.filter(i => i.id !== id))
     setCancelling(null)
+  }
+
+  async function handleResend(id: string) {
+    setResending(id)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.access_token) {
+      await fetch('/api/invite/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ invitationId: id }),
+      })
+    }
+    setResending(null)
   }
 
   function set(key: keyof FirmData) {
@@ -538,13 +561,16 @@ export default function MonCabinetPage() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           {isAdmin && (
-                            <button
-                              onClick={() => handleCancel(inv.id)}
-                              disabled={cancelling === inv.id}
-                              className="text-xs text-[#DC2626] hover:underline disabled:opacity-40"
-                            >
-                              {cancelling === inv.id ? 'Annulation…' : 'Annuler'}
-                            </button>
+                            <div className="flex items-center justify-end gap-3">
+                              <button onClick={() => handleResend(inv.id)} disabled={resending === inv.id || cancelling === inv.id}
+                                className="text-xs text-[#1D4ED8] hover:underline disabled:opacity-40">
+                                {resending === inv.id ? 'Envoi…' : 'Renvoyer'}
+                              </button>
+                              <button onClick={() => handleCancel(inv.id)} disabled={cancelling === inv.id || resending === inv.id}
+                                className="text-xs text-[#DC2626] hover:underline disabled:opacity-40">
+                                {cancelling === inv.id ? 'Annulation…' : 'Annuler'}
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>

@@ -83,6 +83,38 @@ lib/
 - **Pour fichiers / documents** : modal dédiée (`DeleteConfirmModal`)
 - Jamais de `window.confirm()` — UX native non contrôlable
 
+## DevOps — Commandes courantes
+
+### Démarrer le serveur local
+```bash
+pkill -f "next dev" 2>/dev/null; npm run dev
+```
+Toujours couper le process existant avant de relancer pour éviter le port 3001.
+
+### Migrations Supabase
+```bash
+supabase migration list          # voir ce qui est appliqué vs en attente
+supabase db push                 # pousser les nouvelles migrations vers le projet distant
+```
+Le projet Supabase est lié (`supabase/.temp/project-ref` = `uevxsikiwiruaqgtconz`).
+
+### Variables d'environnement `.env.local`
+| Variable | Dev local | Vercel prod |
+|---|---|---|
+| `APP_URL` | `http://localhost:3000` | `https://fluxia-appv1.vercel.app` |
+| `RESEND_API_KEY` | clé Resend | idem (à configurer dans Vercel) |
+
+**Important** : `APP_URL` doit correspondre à l'environnement d'exécution — les liens d'invitation dans les emails pointent vers cette URL. En dev local, mettre `http://localhost:3000` sinon les liens redirigent vers Vercel et le token ne peut pas être validé.
+
+### Email — Resend
+- Domaine expéditeur vérifié : `advences.io` → `noreply@advences.io`
+- `advences.com` n'est PAS vérifié sur Resend — ne pas l'utiliser
+- La clé API est en mode "send only" (pas de consultation des logs via API)
+
+### Déploiement Vercel
+- Push sur `main` → déploiement automatique
+- Vérifier que `APP_URL` est bien `https://fluxia-appv1.vercel.app` dans les env vars Vercel
+
 ## Ce qu'on ne fait PAS
 - Pas de mock de la base de données pour les tests
 - Pas de `any` TypeScript

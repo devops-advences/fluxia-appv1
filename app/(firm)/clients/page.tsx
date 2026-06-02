@@ -15,6 +15,23 @@ type CustomerRow = {
   legal_entity: boolean
   tax_ref_main: string | null
   active: boolean
+  onboarding_score: number
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  const color = score >= 80 ? '#059669' : score >= 50 ? '#D97706' : '#DC2626'
+  const bg    = score >= 80 ? '#F0FDF4' : score >= 50 ? '#FFFBEB' : '#FEF2F2'
+  return (
+    <div className="flex items-center gap-2 min-w-[100px]">
+      <div className="flex-1 h-1.5 bg-[#F1F5F9] rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: `${score}%`, backgroundColor: color }} />
+      </div>
+      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+        style={{ color, backgroundColor: bg }}>
+        {score}%
+      </span>
+    </div>
+  )
 }
 
 export default function ClientsPage() {
@@ -31,7 +48,7 @@ export default function ClientsPage() {
 
       const { data } = await supabase
         .from('customer')
-        .select('id, name, country_code, legal_entity, tax_ref_main, active')
+        .select('id, name, country_code, legal_entity, tax_ref_main, active, onboarding_score')
         .eq('firm_id', ud.firm_id)
         .order('name', { ascending: true })
         .limit(500)
@@ -84,7 +101,7 @@ export default function ClientsPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                  {['Nom', 'Type', 'Pays', 'N° fiscal', 'Statut'].map(h => (
+                  {['Nom', 'Type', 'Pays', 'N° fiscal', 'Statut', 'Complétion'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -122,6 +139,9 @@ export default function ClientsPage() {
                       }`}>
                         {c.active ? 'Actif' : 'Inactif'}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <ScoreBadge score={c.onboarding_score} />
                     </td>
                   </tr>
                 ))}
