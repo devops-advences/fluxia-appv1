@@ -38,6 +38,7 @@ export default function MesTachesPage() {
 
   useEffect(() => {
     if (!activeCustomer) return
+    const customer = activeCustomer
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return
@@ -59,7 +60,7 @@ export default function MesTachesPage() {
       ])
 
       const filtered = ((taskData ?? []) as Task[]).filter(t =>
-        !t.country_code || t.country_code === activeCustomer.country_code
+        !t.country_code || t.country_code === customer.country_code
       )
       setTasks(filtered)
       if (statusData) setStatuses(statusData as StatusRow[])
@@ -69,7 +70,7 @@ export default function MesTachesPage() {
   }, [activeCustomer])
 
   async function changeYear(delta: number) {
-    if (!firmId || !activeCustomer?.id) return
+    if (!firmId || !customer.id) return
     const newYear = year + delta
     setYear(newYear)
     setLoadingYear(true)
@@ -77,15 +78,15 @@ export default function MesTachesPage() {
       .from('recurring_task_status')
       .select('recurring_task_id, customer_id, year, month, status, comment')
       .eq('firm_id', firmId)
-      .eq('customer_id', activeCustomer?.id)
+      .eq('customer_id', customer.id)
       .eq('year', newYear)
     if (data) setStatuses(data as StatusRow[])
     setLoadingYear(false)
   }
 
   const getStatus = useCallback((taskId: string, month: number) =>
-    statuses.find(s => s.recurring_task_id === taskId && s.customer_id === activeCustomer?.id && s.year === year && s.month === month),
-  [statuses, activeCustomer?.id, year])
+    statuses.find(s => s.recurring_task_id === taskId && s.customer_id === customer.id && s.year === year && s.month === month),
+  [statuses, customer.id, year])
 
   function effectiveStatus(stored: StatusRow | undefined, month: number): keyof typeof STATUS_CFG {
     const s = stored?.status
@@ -98,12 +99,12 @@ export default function MesTachesPage() {
   }
 
   async function handleSave(status: string, comment: string) {
-    if (!modal || !firmId || !activeCustomer?.id || !userId) return
+    if (!modal || !firmId || !customer.id || !userId) return
     setSaving(true)
     const { error } = await supabase.from('recurring_task_status').upsert({
       recurring_task_id: modal.task.id,
       firm_id:           firmId,
-      customer_id:       activeCustomer?.id,
+      customer_id:       customer.id,
       year,
       month:             modal.month,
       status,
@@ -115,7 +116,7 @@ export default function MesTachesPage() {
     if (!error) {
       setStatuses(prev => [
         ...prev.filter(s => !(s.recurring_task_id === modal.task.id && s.year === year && s.month === modal.month)),
-        { recurring_task_id: modal.task.id, customer_id: activeCustomer?.id, year, month: modal.month, status, comment: comment || null },
+        { recurring_task_id: modal.task.id, customer_id: customer.id, year, month: modal.month, status, comment: comment || null },
       ])
       setModal(null)
     }
@@ -206,7 +207,7 @@ export default function MesTachesPage() {
         </div>
       )}
 
-      {modal && activeCustomer?.id && (
+      {modal && customer.id && (
         <StatusModal
           taskName={modal.task.name}
           customerName=""

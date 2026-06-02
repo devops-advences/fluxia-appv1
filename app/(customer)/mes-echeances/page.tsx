@@ -71,19 +71,20 @@ export default function MesEcheancesPage() {
 
   useEffect(() => {
     if (!activeCustomer) return
+    const customer = activeCustomer
     async function load() {
       setLoading(true)
 
       // Génère les obligations manquantes pour cette entité
       await Promise.all([
-        supabase.rpc('generate_customer_obligations', { p_customer_id: activeCustomer.id, p_year: currentYear }),
-        supabase.rpc('generate_customer_obligations', { p_customer_id: activeCustomer.id, p_year: currentYear + 1 }),
+        supabase.rpc('generate_customer_obligations', { p_customer_id: customer.id, p_year: currentYear }),
+        supabase.rpc('generate_customer_obligations', { p_customer_id: customer.id, p_year: currentYear + 1 }),
       ])
 
       const { data } = await supabase
         .from('tax_obligation')
         .select('id, label, tax_type, due_date, amount, payment_mode, status')
-        .eq('customer_id', activeCustomer.id)
+        .eq('customer_id', customer.id)
         .order('due_date', { ascending: true })
 
       setObligations((data ?? []) as Obligation[])

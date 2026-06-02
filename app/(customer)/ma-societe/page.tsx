@@ -175,16 +175,17 @@ export default function MaSocietePage() {
 
   useEffect(() => {
     if (!activeCustomer) return
+    const customer = activeCustomer
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return
       setCurrentUserId(session.user.id)
-      setIsAdmin(activeCustomer.admin)
+      setIsAdmin(customer.admin)
 
       const [{ data: custData }, { data: ucData }, { data: invData }] = await Promise.all([
-        supabase.from('customer').select('id, name, firm_id, email, phone, website, address, address_2, city, postal_code, country_code, tax_ref_main, tax_ref_vat, default_payment_mode, employees_none, accounts_none').eq('id', activeCustomer.id).single(),
-        supabase.from('user_customer').select('admin, created_at, user_data:user_id(id, first_name, last_name, active)').eq('customer_id', activeCustomer.id),
-        supabase.from('user_invitation').select('id, email, status, expires_at, created_at').eq('customer_id', activeCustomer.id).eq('status', 'pending').gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
+        supabase.from('customer').select('id, name, firm_id, email, phone, website, address, address_2, city, postal_code, country_code, tax_ref_main, tax_ref_vat, default_payment_mode, employees_none, accounts_none').eq('id', customer.id).single(),
+        supabase.from('user_customer').select('admin, created_at, user_data:user_id(id, first_name, last_name, active)').eq('customer_id', customer.id),
+        supabase.from('user_invitation').select('id, email, status, expires_at, created_at').eq('customer_id', customer.id).eq('status', 'pending').gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       ])
 
       if (custData) {
@@ -192,12 +193,12 @@ export default function MaSocietePage() {
         setCustomer(c)
         setForm({ name: c.name, email: c.email ?? '', phone: c.phone ?? '', website: c.website ?? '', address: c.address ?? '', address_2: c.address_2 ?? '', city: c.city ?? '', postal_code: c.postal_code ?? '', tax_ref_main: c.tax_ref_main ?? '', tax_ref_vat: c.tax_ref_vat ?? '', default_payment_mode: c.default_payment_mode ?? '', employees_none: c.employees_none, accounts_none: c.accounts_none })
 
-        setCustomerId(activeCustomer.id)
+        setCustomerId(customer.id)
         const [{ data: banksData }, { data: accountsData }] = await Promise.all([
           supabase.from('bank').select('id, name, logo_url').eq('country_code', c.country_code).eq('active', true).order('rank'),
           supabase.from('customer_bank_account')
             .select('id, bank_id, type, name, iban, bic, currency_code, bank:bank_id(id, name, logo_url)')
-            .eq('customer_id', activeCustomer.id).order('created_at'),
+            .eq('customer_id', customer.id).order('created_at'),
         ])
         if (banksData) {
           setBanks(banksData as BankRow[])
@@ -208,13 +209,13 @@ export default function MaSocietePage() {
         const { data: empData } = await supabase
           .from('customer_employee')
           .select('id, civility, last_name, first_name, birth_date, identity_ref, social_ref, contract_type, job_title, entry_date, exit_date, active')
-          .eq('customer_id', activeCustomer.id).order('last_name')
+          .eq('customer_id', customer.id).order('last_name')
         if (empData) setEmployees(empData as Employee[])
 
         const { data: svcData } = await supabase
           .from('customer_service')
           .select('id, start_date, end_date, comment, active, service:service_id(name, group, frequency, service_document_type(document_type:document_type_id(name, country_code)))')
-          .eq('customer_id', activeCustomer.id)
+          .eq('customer_id', customer.id)
           .eq('active', true)
           .order('created_at')
         if (svcData) setCustomerServices(svcData as unknown as CustomerServiceRow[])

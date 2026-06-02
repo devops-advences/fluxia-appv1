@@ -168,22 +168,23 @@ export default function MesDocumentsPage() {
 
   useEffect(() => {
     if (!activeCustomer) return
+    const customer = activeCustomer
     async function init() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
       setCurrentUserId(session.user.id)
-      setFirmId(activeCustomer.firm_id)
+      setFirmId(customer.firm_id)
 
       const [yearsRes, typesRes] = await Promise.all([
-        supabase.from('document').select('year').eq('customer_id', activeCustomer.id).limit(1000),
-        supabase.from('document_type').select('id, name').eq('country_code', activeCustomer.country_code).eq('customer', true).eq('active', true).order('rank'),
+        supabase.from('document').select('year').eq('customer_id', customer.id).limit(1000),
+        supabase.from('document_type').select('id, name').eq('country_code', customer.country_code).eq('customer', true).eq('active', true).order('rank'),
       ])
 
       const rawYears = (yearsRes.data ?? []).map(r => (r as { year: number }).year)
       const uniqueYears = [...new Set(rawYears)].sort((a, b) => b - a)
       setAvailableYears(uniqueYears.length > 0 ? uniqueYears : [currentYear])
       setDocTypes((typesRes.data ?? []) as DocTypeOpt[])
-      setCustomerId(activeCustomer.id)
+      setCustomerId(customer.id)
       setInitLoading(false)
     }
     init()

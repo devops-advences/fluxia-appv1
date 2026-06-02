@@ -64,20 +64,21 @@ export default function MesLivrablesPage() {
 
   useEffect(() => {
     if (!activeCustomer) return
+    const customer = activeCustomer
     async function init() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
       const [yearsRes, typesRes] = await Promise.all([
-        supabase.from('document').select('year').eq('customer_id', activeCustomer.id),
-        supabase.from('document_type').select('id').eq('country_code', activeCustomer.country_code).eq('customer', false).eq('active', true),
+        supabase.from('document').select('year').eq('customer_id', customer.id),
+        supabase.from('document_type').select('id').eq('country_code', customer.country_code).eq('customer', false).eq('active', true),
       ])
 
       const rawYears = (yearsRes.data ?? []).map(r => (r as { year: number }).year)
       const uniqueYears = [...new Set(rawYears)].sort((a, b) => b - a)
       setAvailableYears(uniqueYears.length > 0 ? uniqueYears : [currentYear])
       setTypeIds(((typesRes.data ?? []) as { id: string }[]).map(t => t.id))
-      setCustomerId(activeCustomer.id)
+      setCustomerId(customer.id)
       setInitLoading(false)
     }
     init()
