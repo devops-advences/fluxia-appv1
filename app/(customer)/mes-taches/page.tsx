@@ -70,7 +70,7 @@ export default function MesTachesPage() {
   }, [activeCustomer])
 
   async function changeYear(delta: number) {
-    if (!firmId || !customer.id) return
+    if (!firmId || !activeCustomer) return
     const newYear = year + delta
     setYear(newYear)
     setLoadingYear(true)
@@ -78,15 +78,15 @@ export default function MesTachesPage() {
       .from('recurring_task_status')
       .select('recurring_task_id, customer_id, year, month, status, comment')
       .eq('firm_id', firmId)
-      .eq('customer_id', customer.id)
+      .eq('customer_id', activeCustomer.id)
       .eq('year', newYear)
     if (data) setStatuses(data as StatusRow[])
     setLoadingYear(false)
   }
 
   const getStatus = useCallback((taskId: string, month: number) =>
-    statuses.find(s => s.recurring_task_id === taskId && s.customer_id === customer.id && s.year === year && s.month === month),
-  [statuses, customer.id, year])
+    statuses.find(s => s.recurring_task_id === taskId && s.customer_id === activeCustomer?.id && s.year === year && s.month === month),
+  [statuses, activeCustomer?.id, year])
 
   function effectiveStatus(stored: StatusRow | undefined, month: number): keyof typeof STATUS_CFG {
     const s = stored?.status
@@ -99,12 +99,12 @@ export default function MesTachesPage() {
   }
 
   async function handleSave(status: string, comment: string) {
-    if (!modal || !firmId || !customer.id || !userId) return
+    if (!modal || !firmId || !activeCustomer || !userId) return
     setSaving(true)
     const { error } = await supabase.from('recurring_task_status').upsert({
       recurring_task_id: modal.task.id,
       firm_id:           firmId,
-      customer_id:       customer.id,
+      customer_id:       activeCustomer.id,
       year,
       month:             modal.month,
       status,
@@ -116,7 +116,7 @@ export default function MesTachesPage() {
     if (!error) {
       setStatuses(prev => [
         ...prev.filter(s => !(s.recurring_task_id === modal.task.id && s.year === year && s.month === modal.month)),
-        { recurring_task_id: modal.task.id, customer_id: customer.id, year, month: modal.month, status, comment: comment || null },
+        { recurring_task_id: modal.task.id, customer_id: activeCustomer.id, year, month: modal.month, status, comment: comment || null },
       ])
       setModal(null)
     }
@@ -207,7 +207,7 @@ export default function MesTachesPage() {
         </div>
       )}
 
-      {modal && customer.id && (
+      {modal && activeCustomer?.id && (
         <StatusModal
           taskName={modal.task.name}
           customerName=""
