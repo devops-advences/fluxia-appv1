@@ -210,7 +210,7 @@ export default function EcheancesPage() {
         </div>
       ) : grouped.length === 0 ? (
         <div className="bg-white border border-[#E2E8F0] rounded-xl px-4 py-16 text-center text-sm text-[#94A3B8]">
-          Aucune échéance pour {year}
+          Aucune échéance sur cette période
         </div>
       ) : (
         <div className="flex flex-col gap-4">
