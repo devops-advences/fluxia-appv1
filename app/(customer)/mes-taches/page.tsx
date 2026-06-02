@@ -55,7 +55,7 @@ export default function MesTachesPage() {
         supabase.from('recurring_task_status')
           .select('recurring_task_id, customer_id, year, month, status, comment')
           .eq('firm_id', ud.firm_id)
-          .eq('customer_id', activeCustomer.id)
+          .eq('customer_id', customer.id)
           .eq('year', currentYear),
       ])
 
