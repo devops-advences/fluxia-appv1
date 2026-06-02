@@ -23,11 +23,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     let active = true
 
     async function loadUser() {
-      const { data: { session } } = await supabase.auth.getSession()
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
       if (!active) return
 
-      if (!session) {
+      if (sessionError || !session) {
         router.push('/login')
         return
       }
@@ -92,8 +92,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     loadUser()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
         router.push('/login')
       }
     })

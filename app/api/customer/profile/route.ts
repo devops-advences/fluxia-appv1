@@ -14,18 +14,18 @@ export async function PATCH(req: Request) {
     .from('user_customer').select('customer_id').eq('user_id', user.id).limit(1).single()
   if (!uc?.customer_id) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
-  let body: Record<string, string | null>
+  let body: Record<string, string | boolean | null>
   try {
-    body = await req.json() as Record<string, string | null>
+    body = await req.json() as Record<string, string | boolean | null>
   } catch {
     return NextResponse.json({ error: 'Corps invalide' }, { status: 400 })
   }
 
-  const ALLOWED = ['name', 'email', 'phone', 'website', 'address', 'address_2', 'city', 'postal_code', 'tax_ref_main', 'tax_ref_vat']
-  const updates: Record<string, string | null> = {}
-  for (const key of ALLOWED) {
-    if (key in body) updates[key] = body[key] || null
-  }
+  const ALLOWED_STR  = ['name', 'email', 'phone', 'website', 'address', 'address_2', 'city', 'postal_code', 'tax_ref_main', 'tax_ref_vat', 'default_payment_mode']
+  const ALLOWED_BOOL = ['employees_none', 'accounts_none']
+  const updates: Record<string, string | boolean | null> = {}
+  for (const key of ALLOWED_STR)  { if (key in body) updates[key] = (body[key] as string) || null }
+  for (const key of ALLOWED_BOOL) { if (key in body) updates[key] = Boolean(body[key]) }
 
   if (Object.keys(updates).length === 0) return NextResponse.json({ ok: true })
 

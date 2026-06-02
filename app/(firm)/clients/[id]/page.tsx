@@ -16,6 +16,7 @@ const COUNTRIES = [
 type Customer = {
   id: string; name: string; legal_entity: boolean; country_code: string
   tax_ref_main: string | null; tax_ref_vat: string | null
+  default_payment_mode: string | null
   email: string | null; phone: string | null; website: string | null
   address: string | null; address_2: string | null; city: string | null; postal_code: string | null
   sector: string | null; sub_sector: string | null
@@ -23,6 +24,14 @@ type Customer = {
   employees_none: boolean; accounts_none: boolean
   onboarding_score: number
 }
+
+const PAYMENT_MODES = [
+  { code: '',               label: '— Non défini —' },
+  { code: 'direct_debit',  label: 'Prélèvement automatique' },
+  { code: 'bank_transfer', label: 'Virement bancaire' },
+  { code: 'cheque',        label: 'Chèque' },
+  { code: 'cash',          label: 'Espèces' },
+]
 
 type CustomerUser = {
   id: string; first_name: string; last_name: string; active: boolean; admin: boolean; created_at: string
@@ -246,8 +255,9 @@ export default function ClientDetailPage() {
         name:           c.name,
         legal_entity:   c.legal_entity,
         country_code:   c.country_code,
-        tax_ref_main:   c.tax_ref_main ?? '',
-        tax_ref_vat:    c.tax_ref_vat  ?? '',
+        tax_ref_main:          c.tax_ref_main ?? '',
+        tax_ref_vat:           c.tax_ref_vat  ?? '',
+        default_payment_mode:  c.default_payment_mode ?? '',
         email:          c.email        ?? '',
         phone:          c.phone        ?? '',
         website:        c.website      ?? '',
@@ -328,8 +338,9 @@ export default function ClientDetailPage() {
       name:           form.name         || null,
       legal_entity:   form.legal_entity ?? true,
       country_code:   form.country_code || 'FR',
-      tax_ref_main:   form.tax_ref_main || null,
-      tax_ref_vat:    form.tax_ref_vat  || null,
+      tax_ref_main:         form.tax_ref_main || null,
+      tax_ref_vat:          form.tax_ref_vat  || null,
+      default_payment_mode: form.default_payment_mode || null,
       email:          form.email        || null,
       phone:          form.phone        || null,
       website:        form.website      || null,
@@ -771,6 +782,13 @@ export default function ClientDetailPage() {
 
             <Field label="Identifiant fiscal" value={form.tax_ref_main ?? ''} onChange={set('tax_ref_main')} />
             <Field label="Numéro TVA"         value={form.tax_ref_vat  ?? ''} onChange={set('tax_ref_vat')} />
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">Mode de paiement impôt</span>
+              <select value={form.default_payment_mode ?? ''} onChange={e => { setForm(f => ({ ...f, default_payment_mode: e.target.value })); setSaved(false) }}
+                className="text-sm px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#0F172A] outline-none focus:border-[#1D4ED8] focus:ring-1 focus:ring-[#1D4ED8] transition-colors">
+                {PAYMENT_MODES.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
+              </select>
+            </div>
           </Section>
 
           <Section title="Contact">
@@ -796,7 +814,7 @@ export default function ClientDetailPage() {
                 <label key={key} className="flex items-center gap-3 cursor-pointer col-span-2">
                   <button role="switch" aria-checked={val}
                     onClick={() => { setForm(f => ({ ...f, [key]: !val })); setSaved(false) }}
-                    className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${val ? 'bg-[#1D4ED8]' : 'bg-[#CBD5E1]'}`}>
+                    className={`relative w-9 h-5 rounded-full overflow-hidden transition-colors shrink-0 ${val ? 'bg-[#1D4ED8]' : 'bg-[#CBD5E1]'}`}>
                     <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${val ? 'translate-x-4' : ''}`} />
                   </button>
                   <span className="text-sm text-[#0F172A]">{label}</span>

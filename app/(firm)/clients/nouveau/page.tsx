@@ -13,6 +13,14 @@ const COUNTRIES = [
 
 const cls = "text-sm px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#0F172A] outline-none focus:border-[#1D4ED8] focus:ring-1 focus:ring-[#1D4ED8] transition-colors w-full"
 
+const PAYMENT_MODES = [
+  { code: '',               label: '— Non défini —' },
+  { code: 'direct_debit',  label: 'Prélèvement automatique' },
+  { code: 'bank_transfer', label: 'Virement bancaire' },
+  { code: 'cheque',        label: 'Chèque' },
+  { code: 'cash',          label: 'Espèces' },
+]
+
 function Field({ label, value, onChange, type = 'text', placeholder }: {
   label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string
 }) {
@@ -50,8 +58,9 @@ export default function NouveauClientPage() {
   const [address2, setAddress2]       = useState('')
   const [postalCode, setPostalCode]   = useState('')
   const [city, setCity]               = useState('')
-  const [sector, setSector]           = useState('')
-  const [subSector, setSubSector]     = useState('')
+  const [sector, setSector]                   = useState('')
+  const [subSector, setSubSector]             = useState('')
+  const [defaultPaymentMode, setDefaultPaymentMode] = useState('')
 
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
@@ -82,9 +91,10 @@ export default function NouveauClientPage() {
       address_2:    address2     || null,
       postal_code:  postalCode   || null,
       city:         city         || null,
-      sector:       sector       || null,
-      sub_sector:   subSector    || null,
-      active:       true,
+      sector:                sector              || null,
+      sub_sector:            subSector           || null,
+      default_payment_mode:  defaultPaymentMode  || null,
+      active:                true,
     })
 
     if (insertError) { setError('Erreur lors de la création.'); setLoading(false); return }
@@ -144,6 +154,12 @@ export default function NouveauClientPage() {
 
           <Field label="Identifiant fiscal" value={taxRefMain} onChange={setTaxRefMain} placeholder="Ex : 1234567A" />
           <Field label="Numéro TVA"         value={taxRefVat}  onChange={setTaxRefVat}  placeholder="Ex : FR12345678901" />
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">Mode de paiement impôt</span>
+            <select value={defaultPaymentMode} onChange={e => setDefaultPaymentMode(e.target.value)} className={cls}>
+              {PAYMENT_MODES.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
+            </select>
+          </div>
         </Section>
 
         <Section title="Contact">

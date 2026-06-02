@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, Download, Eye, Search, X } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
 import { formatPeriod, EXT_COLORS } from '@/lib/format'
+import { useCustomer } from '@/lib/CustomerContext'
 
 function SizeCell({ kb }: { kb: number | null }) {
   if (!kb) return <span className="text-xs text-[#94A3B8]">—</span>
@@ -40,6 +41,7 @@ const SEL = "text-sm border border-[#E2E8F0] rounded-lg px-3 py-1.5 bg-white tex
 export default function MesLivrablesPage() {
   const router      = useRouter()
   const currentYear = new Date().getFullYear()
+  const { activeCustomer } = useCustomer()
 
   const [customerId, setCustomerId]   = useState<string | null>(null)
   const [typeIds, setTypeIds]         = useState<string[]>([])
@@ -61,33 +63,25 @@ export default function MesLivrablesPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
+    if (!activeCustomer) return
     async function init() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: uc } = await supabase
-        .from('user_customer').select('customer_id').eq('user_id', session.user.id).limit(1).single()
-      if (!uc?.customer_id) { setInitLoading(false); return }
-
-      const { data: cust } = await supabase
-        .from('customer').select('country_code').eq('id', uc.customer_id).single()
-
       const [yearsRes, typesRes] = await Promise.all([
-        supabase.from('document').select('year').eq('customer_id', uc.customer_id),
-        cust
-          ? supabase.from('document_type').select('id').eq('country_code', cust.country_code).eq('customer', false).eq('active', true)
-          : Promise.resolve({ data: [] }),
+        supabase.from('document').select('year').eq('customer_id', activeCustomer.id),
+        supabase.from('document_type').select('id').eq('country_code', activeCustomer.country_code).eq('customer', false).eq('active', true),
       ])
 
       const rawYears = (yearsRes.data ?? []).map(r => (r as { year: number }).year)
       const uniqueYears = [...new Set(rawYears)].sort((a, b) => b - a)
       setAvailableYears(uniqueYears.length > 0 ? uniqueYears : [currentYear])
       setTypeIds(((typesRes.data ?? []) as { id: string }[]).map(t => t.id))
-      setCustomerId(uc.customer_id)
+      setCustomerId(activeCustomer.id)
       setInitLoading(false)
     }
     init()
-  }, [router, currentYear])
+  }, [router, currentYear, activeCustomer])
 
   const loadDocs = useCallback(async (opts: {
     customerId: string; year: number; typeIds: string[]; page: number; pageSize: number

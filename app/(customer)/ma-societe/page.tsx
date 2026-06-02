@@ -5,6 +5,7 @@ import { Trash2, Upload, FileDown } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabaseClient'
 import type { UserCustomerRow } from '@/lib/db-types'
+import { useCustomer } from '@/lib/CustomerContext'
 
 type CustomerData = {
   id: string
@@ -20,9 +21,18 @@ type CustomerData = {
   country_code: string
   tax_ref_main: string | null
   tax_ref_vat: string | null
+  default_payment_mode: string | null
   employees_none: boolean
   accounts_none: boolean
 }
+
+const PAYMENT_MODES = [
+  { code: '',               label: '— Non défini —' },
+  { code: 'direct_debit',  label: 'Prélèvement automatique' },
+  { code: 'bank_transfer', label: 'Virement bancaire' },
+  { code: 'cheque',        label: 'Chèque' },
+  { code: 'cash',          label: 'Espèces' },
+]
 
 type UserRow = {
   id: string
@@ -111,6 +121,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function MaSocietePage() {
+  const { activeCustomer } = useCustomer()
   const [tab, setTab]             = useState<Tab>('donnees')
   const [customer, setCustomer]   = useState<CustomerData | null>(null)
   const [isAdmin, setIsAdmin]     = useState(false)
@@ -163,34 +174,30 @@ export default function MaSocietePage() {
   }, [banks])
 
   useEffect(() => {
+    if (!activeCustomer) return
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) return
       setCurrentUserId(session.user.id)
-
-      const { data: uc } = await supabase
-        .from('user_customer').select('customer_id, admin').eq('user_id', session.user.id).limit(1).single()
-      if (!uc?.customer_id) { setLoading(false); return }
-      setIsAdmin(!!uc.admin)
+      setIsAdmin(activeCustomer.admin)
 
       const [{ data: custData }, { data: ucData }, { data: invData }] = await Promise.all([
-        supabase.from('customer').select('id, name, firm_id, email, phone, website, address, address_2, city, postal_code, country_code, tax_ref_main, tax_ref_vat, employees_none, accounts_none').eq('id', uc.customer_id).single(),
-        supabase.from('user_customer').select('admin, created_at, user_data:user_id(id, first_name, last_name, active)').eq('customer_id', uc.customer_id),
-        supabase.from('user_invitation').select('id, email, status, expires_at, created_at').eq('customer_id', uc.customer_id).eq('status', 'pending').gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
+        supabase.from('customer').select('id, name, firm_id, email, phone, website, address, address_2, city, postal_code, country_code, tax_ref_main, tax_ref_vat, default_payment_mode, employees_none, accounts_none').eq('id', activeCustomer.id).single(),
+        supabase.from('user_customer').select('admin, created_at, user_data:user_id(id, first_name, last_name, active)').eq('customer_id', activeCustomer.id),
+        supabase.from('user_invitation').select('id, email, status, expires_at, created_at').eq('customer_id', activeCustomer.id).eq('status', 'pending').gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }),
       ])
 
       if (custData) {
         const c = custData as CustomerData
         setCustomer(c)
-        setForm({ name: c.name, email: c.email ?? '', phone: c.phone ?? '', website: c.website ?? '', address: c.address ?? '', address_2: c.address_2 ?? '', city: c.city ?? '', postal_code: c.postal_code ?? '', tax_ref_main: c.tax_ref_main ?? '', tax_ref_vat: c.tax_ref_vat ?? '' })
+        setForm({ name: c.name, email: c.email ?? '', phone: c.phone ?? '', website: c.website ?? '', address: c.address ?? '', address_2: c.address_2 ?? '', city: c.city ?? '', postal_code: c.postal_code ?? '', tax_ref_main: c.tax_ref_main ?? '', tax_ref_vat: c.tax_ref_vat ?? '', default_payment_mode: c.default_payment_mode ?? '', employees_none: c.employees_none, accounts_none: c.accounts_none })
 
-        // Banques + comptes
-        setCustomerId(uc.customer_id)
+        setCustomerId(activeCustomer.id)
         const [{ data: banksData }, { data: accountsData }] = await Promise.all([
           supabase.from('bank').select('id, name, logo_url').eq('country_code', c.country_code).eq('active', true).order('rank'),
           supabase.from('customer_bank_account')
             .select('id, bank_id, type, name, iban, bic, currency_code, bank:bank_id(id, name, logo_url)')
-            .eq('customer_id', uc.customer_id).order('created_at'),
+            .eq('customer_id', activeCustomer.id).order('created_at'),
         ])
         if (banksData) {
           setBanks(banksData as BankRow[])
@@ -201,13 +208,13 @@ export default function MaSocietePage() {
         const { data: empData } = await supabase
           .from('customer_employee')
           .select('id, civility, last_name, first_name, birth_date, identity_ref, social_ref, contract_type, job_title, entry_date, exit_date, active')
-          .eq('customer_id', uc.customer_id).order('last_name')
+          .eq('customer_id', activeCustomer.id).order('last_name')
         if (empData) setEmployees(empData as Employee[])
 
         const { data: svcData } = await supabase
           .from('customer_service')
           .select('id, start_date, end_date, comment, active, service:service_id(name, group, frequency, service_document_type(document_type:document_type_id(name, country_code)))')
-          .eq('customer_id', uc.customer_id)
+          .eq('customer_id', activeCustomer.id)
           .eq('active', true)
           .order('created_at')
         if (svcData) setCustomerServices(svcData as unknown as CustomerServiceRow[])
@@ -224,7 +231,7 @@ export default function MaSocietePage() {
       setLoading(false)
     }
     load()
-  }, [])
+  }, [activeCustomer])
 
   const getToken = async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -450,6 +457,13 @@ export default function MaSocietePage() {
             <Field label="Pays"              value={customer.country_code} readOnly />
             <Field label="Identifiant fiscal" value={form.tax_ref_main ?? ''} onChange={set('tax_ref_main')} />
             <Field label="Numéro TVA"        value={form.tax_ref_vat  ?? ''} onChange={set('tax_ref_vat')} />
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">Mode de paiement impôt</span>
+              <select value={form.default_payment_mode ?? ''} onChange={e => { setForm(f => ({ ...f, default_payment_mode: e.target.value })); setSaved(false) }}
+                className="text-sm px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#0F172A] outline-none focus:border-[#1D4ED8] focus:ring-1 focus:ring-[#1D4ED8] transition-colors">
+                {PAYMENT_MODES.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
+              </select>
+            </div>
           </Section>
 
           <Section title="Contact">
@@ -474,22 +488,24 @@ export default function MaSocietePage() {
             {saveError && <span className="text-sm text-[#DC2626]">{saveError}</span>}
           </div>
 
-          {(customer.employees_none || customer.accounts_none) && (
-            <Section title="Configuration du dossier">
-              {customer.employees_none && (
-                <div className="flex items-center gap-2 col-span-2 text-sm text-[#64748B]">
-                  <span className="w-2 h-2 rounded-full bg-[#CBD5E1] shrink-0" />
-                  Ce dossier est configuré sans salariés
-                </div>
-              )}
-              {customer.accounts_none && (
-                <div className="flex items-center gap-2 col-span-2 text-sm text-[#64748B]">
-                  <span className="w-2 h-2 rounded-full bg-[#CBD5E1] shrink-0" />
-                  Ce dossier est configuré sans comptes bancaires
-                </div>
-              )}
-            </Section>
-          )}
+          <Section title="Configuration du dossier">
+            {([
+              { label: "Je n'ai pas de salariés",          key: 'employees_none' },
+              { label: "Je n'ai pas de comptes bancaires", key: 'accounts_none'  },
+            ] as { label: string; key: 'employees_none' | 'accounts_none' }[]).map(({ label, key }) => {
+              const val = form[key] ?? false
+              return (
+                <label key={key} className="flex items-center gap-3 cursor-pointer col-span-2">
+                  <button type="button" role="switch" aria-checked={val}
+                    onClick={() => { setForm(f => ({ ...f, [key]: !val })); setSaved(false) }}
+                    className={`relative w-9 h-5 rounded-full overflow-hidden transition-colors shrink-0 ${val ? 'bg-[#1D4ED8]' : 'bg-[#CBD5E1]'}`}>
+                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${val ? 'translate-x-4' : ''}`} />
+                  </button>
+                  <span className="text-sm text-[#0F172A]">{label}</span>
+                </label>
+              )
+            })}
+          </Section>
 
           <p className="text-xs text-[#94A3B8]">Pour modifier le pays ou le statut juridique, contactez votre cabinet.</p>
         </div>

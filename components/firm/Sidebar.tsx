@@ -7,6 +7,7 @@ import {
   CheckSquare,
   FileText,
   FolderOutput,
+  CalendarClock,
   Users,
   Building2,
   LogOut,
@@ -32,10 +33,11 @@ const NAV = [
     ],
   },
   {
-    section: 'DOCUMENTS',
+    section: 'DOCUMENTS & ÉCHÉANCES',
     items: [
-      { label: 'Documents clients', href: '/documents', icon: FileText },
-      { label: 'Livrables cabinet', href: '/livrables', icon: FolderOutput },
+      { label: 'Documents clients', href: '/documents',  icon: FileText },
+      { label: 'Livrables cabinet', href: '/livrables',  icon: FolderOutput },
+      { label: 'Échéances fiscales', href: '/echeances', icon: CalendarClock },
     ],
   },
   {

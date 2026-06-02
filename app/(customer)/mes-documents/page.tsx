@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, Download, Eye, LayoutGrid, List, Mail, MoreHorizontal, Pencil, Search, Trash2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
+import { useCustomer } from '@/lib/CustomerContext'
 import MessagesDrawer from '@/components/shared/MessagesDrawer'
 import { formatPeriod, formatExt, EXT_COLORS, MONTHS_FR } from '@/lib/format'
 
@@ -132,6 +133,7 @@ function MenuItemRow({ icon, label, onClick, danger }: {
 export default function MesDocumentsPage() {
   const router      = useRouter()
   const currentYear = new Date().getFullYear()
+  const { activeCustomer } = useCustomer()
 
   const [customerId, setCustomerId]   = useState<string | null>(null)
   const [firmId, setFirmId]           = useState<string | null>(null)
@@ -165,34 +167,27 @@ export default function MesDocumentsPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
+    if (!activeCustomer) return
     async function init() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
       setCurrentUserId(session.user.id)
-
-      const { data: uc } = await supabase
-        .from('user_customer').select('customer_id').eq('user_id', session.user.id).limit(1).single()
-      if (!uc?.customer_id) { setInitLoading(false); return }
-
-      const { data: cust } = await supabase.from('customer').select('country_code, firm_id').eq('id', uc.customer_id).single()
-      if (cust?.firm_id) setFirmId(cust.firm_id)
+      setFirmId(activeCustomer.firm_id)
 
       const [yearsRes, typesRes] = await Promise.all([
-        supabase.from('document').select('year').eq('customer_id', uc.customer_id).limit(1000),
-        cust
-          ? supabase.from('document_type').select('id, name').eq('country_code', cust.country_code).eq('customer', true).eq('active', true).order('rank')
-          : Promise.resolve({ data: [] }),
+        supabase.from('document').select('year').eq('customer_id', activeCustomer.id).limit(1000),
+        supabase.from('document_type').select('id, name').eq('country_code', activeCustomer.country_code).eq('customer', true).eq('active', true).order('rank'),
       ])
 
       const rawYears = (yearsRes.data ?? []).map(r => (r as { year: number }).year)
       const uniqueYears = [...new Set(rawYears)].sort((a, b) => b - a)
       setAvailableYears(uniqueYears.length > 0 ? uniqueYears : [currentYear])
       setDocTypes((typesRes.data ?? []) as DocTypeOpt[])
-      setCustomerId(uc.customer_id)
+      setCustomerId(activeCustomer.id)
       setInitLoading(false)
     }
     init()
-  }, [router, currentYear])
+  }, [router, currentYear, activeCustomer])
 
   const loadDocs = useCallback(async (opts: {
     customerId: string; year: number; status: StatusFilter; page: number; pageSize: number

@@ -63,10 +63,18 @@ lib/
 - Ne jamais utiliser `_id` pour un identifiant externe
 
 ## Supabase — RLS obligatoire
-- Toute nouvelle table = `ALTER TABLE x ENABLE ROW LEVEL SECURITY` + policies dans la même migration
+- Toute nouvelle table = `ALTER TABLE x ENABLE ROW LEVEL SECURITY` + policies + **GRANT** dans la même migration
+- Sans GRANT, PostgREST retourne `permission denied` silencieusement traité comme `[]` par le client JS
+- Template obligatoire pour chaque nouvelle table :
+  ```sql
+  ALTER TABLE x ENABLE ROW LEVEL SECURITY;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON x TO authenticated;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON x TO service_role;
+  -- puis les policies
+  ```
 - Sans policy, PostgREST retourne `[]` (pas d'erreur) même si les données existent — identique à une table vide
-- En cas de 406 ou `[]` inexpliqué : vérifier les policies RLS en premier, avant tout autre diagnostic
-- Vérifier les policies avec curl + token JWT valide, pas juste via le dashboard Supabase
+- En cas de 406 ou `[]` inexpliqué : vérifier d'abord les GRANTs, puis les policies RLS
+- Vérifier avec curl + service_role key : si `permission denied` → GRANT manquant ; si `[]` → policy manquante
 - **Toujours utiliser `my_firm_id()` dans les policies**, jamais un subquery direct sur `user_data`. Le subquery plain est soumis à la RLS de `user_data` et peut retourner `NULL` silencieusement. `my_firm_id()` est `SECURITY DEFINER` et contourne ce risque.
 
 ## Nomenclature — URLs
