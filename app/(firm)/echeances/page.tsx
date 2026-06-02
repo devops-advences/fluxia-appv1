@@ -97,7 +97,7 @@ export default function EcheancesPage() {
       .select('id, label, tax_type, due_date, year, amount, payment_mode, status, customer:customer_id(id, name)')
       .order('due_date', { ascending: true })
 
-    setObligations((data ?? []) as Obligation[])
+    setObligations((data ?? []) as unknown as Obligation[])
     setLoading(false)
   }
 
