@@ -21,7 +21,7 @@ test.describe('Dashboard — cabinet connecté', () => {
   test('affiche la sidebar avec les sections de navigation', async ({ page }) => {
     // Cible les <p> de section pour éviter le strict mode (parent div contient aussi le texte)
     await expect(page.locator('aside p', { hasText: 'GESTION' })).toBeVisible()
-    await expect(page.locator('aside p', { hasText: 'DOCUMENTS' })).toBeVisible()
+    await expect(page.locator('aside p', { hasText: 'DOCUMENTS & ÉCHÉANCES' })).toBeVisible()
     await expect(page.locator('aside p', { hasText: 'ADMINISTRATION' })).toBeVisible()
   })
 
