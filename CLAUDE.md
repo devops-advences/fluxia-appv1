@@ -123,6 +123,24 @@ Le projet Supabase est lié (`supabase/.temp/project-ref` = `uevxsikiwiruaqgtcon
 - Push sur `main` → déploiement automatique
 - Vérifier que `APP_URL` est bien `https://fluxia-appv1.vercel.app` dans les env vars Vercel
 
+## Sécurité — Routes API
+
+- **Ne jamais retourner `error.message` au client** — toujours un message générique (`'Erreur interne'`), logger côté serveur avec `console.error`
+- **Valider les params dynamiques en UUID** avant tout accès DB :
+  ```typescript
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!UUID_RE.test(id)) return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
+  ```
+- **Paths extraits d'URLs** : valider avec regex avant usage Storage (`!path.includes('..')`)
+
+## Performance — Imports
+
+- **Librairies lourdes** (xlsx, pdfjs, pdf-lib) : toujours en import dynamique `await import('...')` à l'intérieur de la fonction qui en a besoin, jamais en import statique top-level
+- **Modales / drawers** : utiliser `next/dynamic` — ils ne sont pas visibles au premier rendu
+  ```typescript
+  const MyModal = dynamic(() => import('./_components/MyModal'))
+  ```
+
 ## Ce qu'on ne fait PAS
 - Pas de mock de la base de données pour les tests
 - Pas de `any` TypeScript
