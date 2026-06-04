@@ -56,7 +56,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { error: updateError } = await service
     .from('document').update(updates).eq('id', id)
 
-  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+  if (updateError) { console.error('firm/documents PATCH:', updateError); return NextResponse.json({ error: 'Erreur interne' }, { status: 500 }) }
 
   if (status && status !== doc.status) {
     await service.from('document_event').insert({
@@ -113,7 +113,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   }
 
   const { error } = await service.from('document').delete().eq('id', id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) { console.error('firm/documents DELETE:', error); return NextResponse.json({ error: 'Erreur interne' }, { status: 500 }) }
 
   return NextResponse.json({ ok: true })
 }

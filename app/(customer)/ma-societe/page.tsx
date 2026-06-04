@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Trash2, Upload, FileDown } from 'lucide-react'
-import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabaseClient'
 import type { UserCustomerRow } from '@/lib/db-types'
 import { useCustomer } from '@/lib/CustomerContext'
@@ -364,8 +363,9 @@ export default function MaSocietePage() {
     setDeletingEmp(null)
   }
 
-  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return
+    const XLSX = await import('xlsx')
     const reader = new FileReader()
     reader.onload = ev => {
       const wb  = XLSX.read(ev.target?.result, { type: 'binary', cellDates: true })
@@ -395,7 +395,8 @@ export default function MaSocietePage() {
     setImportRows([]); setImporting(false)
   }
 
-  function downloadTemplate() {
+  async function downloadTemplate() {
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.aoa_to_sheet([['Civilité','Nom','Prénom','Date naissance','N° Identité','N° Social','Contrat','Poste','Date entrée','Date sortie']])
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Salariés')
     XLSX.writeFile(wb, 'modele_salaries.xlsx')

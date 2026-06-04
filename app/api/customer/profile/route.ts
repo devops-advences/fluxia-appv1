@@ -30,7 +30,7 @@ export async function PATCH(req: Request) {
   if (Object.keys(updates).length === 0) return NextResponse.json({ ok: true })
 
   const { error } = await service.from('customer').update(updates).eq('id', uc.customer_id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) { console.error('customer/profile PATCH:', error); return NextResponse.json({ error: 'Erreur interne' }, { status: 500 }) }
 
   return NextResponse.json({ ok: true })
 }

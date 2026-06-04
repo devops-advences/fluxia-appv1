@@ -64,30 +64,25 @@ export default function PortailLayout({ children }: { children: React.ReactNode 
 
       const fullName = `${ud.first_name} ${ud.last_name}`.trim()
       const initials = ((ud.first_name?.[0] ?? '') + (ud.last_name?.[0] ?? '')).toUpperCase() || '?'
-
-      // Firm info
-      let firmName = '', firmCountry = '', firmLogoUrl: string | null = null
-      if (ud.firm_id) {
-        const { data: firm } = await supabase.from('firm').select('name, country_code, logo_url').eq('id', ud.firm_id).single()
-        const f = firm as { name: string; country_code: string; logo_url?: string | null } | null
-        firmName    = f?.name ?? ''
-        firmCountry = f?.country_code ?? ''
-        firmLogoUrl = f?.logo_url ?? null
-      }
-
-      // Avatar
-      let avatarUrl: string | null = null
       const avatarPath = (ud as { avatar_url?: string | null }).avatar_url
-      if (avatarPath) {
-        const { data: signed } = await supabase.storage.from('avatars').createSignedUrl(avatarPath, 3600)
-        avatarUrl = signed?.signedUrl ?? null
-      }
 
-      // Toutes les entités du user
-      const { data: ucRows } = await supabase
-        .from('user_customer')
-        .select('customer_id, admin')
-        .eq('user_id', session.user.id)
+      // Firm info, avatar URL et entités en parallèle
+      const [firmResult, avatarResult, ucResult] = await Promise.all([
+        ud.firm_id
+          ? supabase.from('firm').select('name, country_code, logo_url').eq('id', ud.firm_id).single()
+          : Promise.resolve({ data: null }),
+        avatarPath
+          ? supabase.storage.from('avatars').createSignedUrl(avatarPath, 3600)
+          : Promise.resolve({ data: null }),
+        supabase.from('user_customer').select('customer_id, admin').eq('user_id', session.user.id),
+      ])
+
+      const f = firmResult.data as { name: string; country_code: string; logo_url?: string | null } | null
+      const firmName    = f?.name ?? ''
+      const firmCountry = f?.country_code ?? ''
+      const firmLogoUrl: string | null = f?.logo_url ?? null
+      const avatarUrl: string | null = (avatarResult.data as { signedUrl?: string } | null)?.signedUrl ?? null
+      const ucRows = ucResult.data
 
       if (ucRows && ucRows.length > 0) {
         const ids = ucRows.map((r: { customer_id: string; admin: boolean }) => r.customer_id)

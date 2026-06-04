@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabaseService'
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  if (!UUID_RE.test(id)) return NextResponse.json({ error: 'ID invalide' }, { status: 400 })
 
   const authHeader = req.headers.get('authorization')
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
@@ -30,7 +33,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       .update({ admin: body.admin })
       .eq('user_id', id)
       .eq('customer_id', uc.customer_id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) { console.error('customer/users PATCH:', error); return NextResponse.json({ error: 'Erreur interne' }, { status: 500 }) }
   }
 
   if (typeof body.active === 'boolean') {
@@ -40,7 +43,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (targetUc?.admin) return NextResponse.json({ error: 'Impossible de désactiver un admin.' }, { status: 403 })
 
     const { error } = await service.from('user_data').update({ active: body.active }).eq('id', id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) { console.error('customer/users PATCH:', error); return NextResponse.json({ error: 'Erreur interne' }, { status: 500 }) }
   }
 
   return NextResponse.json({ ok: true })

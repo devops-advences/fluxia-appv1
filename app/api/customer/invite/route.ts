@@ -41,7 +41,8 @@ export async function POST(req: Request) {
 
   if (error) {
     if (error.code === '23505') return NextResponse.json({ error: 'Invitation déjà en attente pour cet email.' }, { status: 409 })
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error('customer/invite POST:', error)
+    return NextResponse.json({ error: 'Erreur interne' }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true, invite: data })

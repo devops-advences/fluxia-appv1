@@ -31,7 +31,7 @@ export async function PATCH(req: Request) {
   }
 
   const { error } = await service.from('user_data').update(updates).eq('id', user.id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) { console.error('profile PATCH:', error); return NextResponse.json({ error: 'Erreur interne' }, { status: 500 }) }
 
   return NextResponse.json({ ok: true })
 }
@@ -108,11 +108,11 @@ export async function POST(req: Request) {
     uploadError = retry.error
   }
 
-  if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 })
+  if (uploadError) { console.error('profile POST upload:', uploadError); return NextResponse.json({ error: 'Erreur lors du téléchargement' }, { status: 500 }) }
 
   // Stocker le chemin (pas l'URL) dans la DB
   const { error: dbErr } = await service.from('user_data').update({ avatar_url: path }).eq('id', user.id)
-  if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 })
+  if (dbErr) { console.error('profile POST db:', dbErr); return NextResponse.json({ error: 'Erreur interne' }, { status: 500 }) }
 
   // Retourner une URL signée pour affichage immédiat
   const { data: signed } = await service.storage.from('avatars').createSignedUrl(path, 3600)

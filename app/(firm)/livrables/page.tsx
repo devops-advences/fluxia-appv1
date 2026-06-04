@@ -4,11 +4,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
+import dynamic from 'next/dynamic'
 import LivrablesFilters from './_components/LivrablesFilters'
-import DeleteConfirmModal from './_components/DeleteConfirmModal'
-import NoteModal from './_components/NoteModal'
-import EventsDrawer from './_components/EventsDrawer'
-import PreviewModal from './_components/PreviewModal'
+const DeleteConfirmModal = dynamic(() => import('./_components/DeleteConfirmModal'))
+const NoteModal          = dynamic(() => import('./_components/NoteModal'))
+const EventsDrawer       = dynamic(() => import('./_components/EventsDrawer'))
+const PreviewModal       = dynamic(() => import('./_components/PreviewModal'))
 import ListView from './_components/ListView'
 import {
   CustomerFilter, DocTypeOpt, DocRow, EventRow,

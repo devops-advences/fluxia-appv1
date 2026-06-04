@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Building2, User, ArrowLeft, Copy, Check, Trash2, Upload, FileDown } from 'lucide-react'
-import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabaseClient'
 import { SECTORS } from '@/lib/sectors'
 
@@ -518,9 +517,10 @@ export default function ClientDetailPage() {
     setDeletingEmp(null)
   }
 
-  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    const XLSX = await import('xlsx')
     const reader = new FileReader()
     reader.onload = ev => {
       const wb  = XLSX.read(ev.target?.result, { type: 'binary', cellDates: true })
@@ -587,7 +587,8 @@ export default function ClientDetailPage() {
     setImporting(false)
   }
 
-  function downloadTemplate() {
+  async function downloadTemplate() {
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.aoa_to_sheet([['Civilité','Nom','Prénom','Date naissance','N° Identité','N° Social','Contrat','Poste','Date entrée','Date sortie']])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Salariés')

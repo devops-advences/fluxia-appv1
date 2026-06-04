@@ -92,7 +92,7 @@ export async function POST(req: Request) {
     uploadError = retry.error
   }
 
-  if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 })
+  if (uploadError) { console.error('firm/documents/upload:', uploadError); return NextResponse.json({ error: 'Erreur lors du téléchargement' }, { status: 500 }) }
 
   const { data: doc, error: insertError } = await service.from('document').insert({
     firm_id:      firm.id,

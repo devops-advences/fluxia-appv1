@@ -34,7 +34,7 @@ export async function GET(req: Request) {
     .eq('object_id', objectId)
     .order('created_at', { ascending: true })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) { console.error('messages GET:', error); return NextResponse.json({ error: 'Erreur interne' }, { status: 500 }) }
 
   const senderIds = [...new Set((msgs ?? []).map(m => m.sender_id))]
   const { data: users } = senderIds.length
@@ -90,7 +90,7 @@ export async function POST(req: Request) {
     body:        msgBody.trim(),
   }).select('id, body, created_at, sender_id').single()
 
-  if (error || !msg) return NextResponse.json({ error: error?.message ?? 'Erreur' }, { status: 500 })
+  if (error || !msg) { console.error('messages POST:', error); return NextResponse.json({ error: 'Erreur interne' }, { status: 500 }) }
 
   // Récupérer le nom du document pour l'email
   const { data: doc } = await service

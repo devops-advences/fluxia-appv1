@@ -42,13 +42,13 @@ export async function POST(req: Request) {
     .from('logos')
     .upload(path, file, { contentType: file.type, upsert: true })
 
-  if (uploadErr) return NextResponse.json({ error: uploadErr.message }, { status: 500 })
+  if (uploadErr) { console.error('firm/logo POST upload:', uploadErr); return NextResponse.json({ error: 'Erreur lors du téléchargement' }, { status: 500 }) }
 
   const { data: pub } = service.storage.from('logos').getPublicUrl(path)
   const logoUrl = pub.publicUrl
 
   const { error: dbErr } = await service.from('firm').update({ logo_url: logoUrl }).eq('id', ud.firm_id)
-  if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 })
+  if (dbErr) { console.error('firm/logo POST db:', dbErr); return NextResponse.json({ error: 'Erreur interne' }, { status: 500 }) }
 
   return NextResponse.json({ ok: true, logo_url: logoUrl })
 }
@@ -68,8 +68,10 @@ export async function DELETE(req: Request) {
 
   const { data: firm } = await service.from('firm').select('logo_url').eq('id', ud.firm_id).single()
   if (firm?.logo_url) {
-    const path = firm.logo_url.split('/logos/')[1]
-    if (path) await service.storage.from('logos').remove([path])
+    const pathPart = firm.logo_url.split('/logos/')[1]
+    if (pathPart && !pathPart.includes('..') && /^[a-zA-Z0-9/._-]+$/.test(pathPart)) {
+      await service.storage.from('logos').remove([pathPart])
+    }
   }
 
   await service.from('firm').update({ logo_url: null }).eq('id', ud.firm_id)

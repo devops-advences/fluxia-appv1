@@ -4,12 +4,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, LayoutGrid, List } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
+import dynamic from 'next/dynamic'
 import DocumentFilters from './_components/DocumentFilters'
-import DeleteConfirmModal from './_components/DeleteConfirmModal'
-import NoteModal from './_components/NoteModal'
-import EventsDrawer from './_components/EventsDrawer'
-import MessagesDrawer from '@/components/shared/MessagesDrawer'
-import PreviewModal from './_components/PreviewModal'
+const DeleteConfirmModal = dynamic(() => import('./_components/DeleteConfirmModal'))
+const NoteModal          = dynamic(() => import('./_components/NoteModal'))
+const EventsDrawer       = dynamic(() => import('./_components/EventsDrawer'))
+const MessagesDrawer     = dynamic(() => import('@/components/shared/MessagesDrawer'))
+const PreviewModal       = dynamic(() => import('./_components/PreviewModal'))
 import KanbanView from './_components/KanbanView'
 import ListView from './_components/ListView'
 import {
@@ -88,7 +89,7 @@ export default function DocumentsPage() {
       const [custsRes, typesRes, yearsRes] = await Promise.all([
         supabase.from('customer').select('id, name').eq('firm_id', firm.id).eq('active', true).order('name'),
         supabase.from('document_type').select('id, name').eq('country_code', firm.country_code).eq('customer', true).eq('active', true).order('rank'),
-        supabase.from('document').select('year').eq('firm_id', firm.id).limit(1000),
+        supabase.from('document').select('year').eq('firm_id', firm.id).limit(100),
       ])
 
       setCustomers((custsRes.data ?? []) as CustomerFilter[])
@@ -157,7 +158,7 @@ export default function DocumentsPage() {
       loadDocs({ firmId, year: yearFilter, status: statusFilter, type: typeFilter, cust: custFilter, page, pageSize })
     }, 300)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
-  }, [firmId, yearFilter, statusFilter, typeFilter, custFilter, view, page, pageSize, loadDocs])
+  }, [firmId, yearFilter, statusFilter, typeFilter, custFilter, page, pageSize, loadDocs])
 
   // ── Actions ───────────────────────────────────────────────────
   const getToken = async () => {

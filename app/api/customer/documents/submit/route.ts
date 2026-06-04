@@ -147,7 +147,8 @@ export async function POST(req: Request) {
 
     if (uploadError) {
       if (uploadedPaths.length > 0) await service.storage.from(bucket).remove(uploadedPaths)
-      return NextResponse.json({ error: `Erreur lors du dépôt : ${file.name} — ${uploadError.message}` }, { status: 500 })
+      console.error('customer/documents/submit upload:', uploadError)
+      return NextResponse.json({ error: `Erreur lors du dépôt : ${file.name}` }, { status: 500 })
     }
     uploadedPaths.push(path)
 

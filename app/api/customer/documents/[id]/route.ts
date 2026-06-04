@@ -42,7 +42,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (Object.keys(updates).length === 0) return NextResponse.json({ ok: true })
 
   const { error } = await service.from('document').update(updates).eq('id', id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) { console.error('customer/documents PATCH/DELETE:', error); return NextResponse.json({ error: 'Erreur interne' }, { status: 500 }) }
 
   return NextResponse.json({ ok: true })
 }
@@ -75,7 +75,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   }
 
   const { error } = await service.from('document').delete().eq('id', id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) { console.error('customer/documents PATCH/DELETE:', error); return NextResponse.json({ error: 'Erreur interne' }, { status: 500 }) }
 
   return NextResponse.json({ ok: true })
 }
