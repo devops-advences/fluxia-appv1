@@ -58,7 +58,6 @@ export default function LoginPage() {
           <span className="text-2xl font-bold text-[#0F172A]">Flux</span>
           <span className="text-2xl font-bold text-[#1D4ED8]">IA</span>
           <p className="text-sm text-[#64748B] mt-1">Pré-comptabilité</p>
-          <p className="text-[10px] text-[#CBD5E1] mt-1">deploy test — VPS OK</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
