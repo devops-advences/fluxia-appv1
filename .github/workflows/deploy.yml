@@ -1,0 +1,29 @@
+name: Deploy Fluxia
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, fluxia]
+    steps:
+      - name: Pull latest
+        run: |
+          cd /app/fluxia
+          git pull origin main
+
+      - name: Install dependencies
+        run: |
+          cd /app/fluxia
+          npm ci
+
+      - name: Build
+        run: |
+          cd /app/fluxia
+          npm run build
+
+      - name: Restart app
+        run: |
+          cd /app/fluxia
+          pm2 restart fluxia
