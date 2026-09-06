@@ -109,8 +109,9 @@ export async function POST(req: Request) {
   }).select('id').single()
 
   if (insertError || !doc) {
+    console.error('firm/documents/upload insert:', insertError)
     await service.storage.from(firm.id).remove([storagePath])
-    return NextResponse.json({ error: insertError?.message ?? 'Erreur insertion' }, { status: 500 })
+    return NextResponse.json({ error: 'Erreur lors de l\'enregistrement' }, { status: 500 })
   }
 
   await service.from('document_event').insert({

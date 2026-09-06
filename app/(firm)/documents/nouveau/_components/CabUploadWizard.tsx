@@ -132,8 +132,12 @@ export default function CabUploadWizard({ firmName, customers, accessToken }: Ca
       body: fd,
     })
     if (!res.ok) {
-      const data = await res.json() as { error?: string }
-      throw new Error(data.error ?? `Erreur dépôt ${file.name}`)
+      let msg = `Erreur dépôt ${file.name}`
+      try {
+        const data = await res.json() as { error?: string }
+        if (data.error) msg = data.error
+      } catch { /* body vide ou non-JSON */ }
+      throw new Error(msg)
     }
   }, [selectedCustomerId, source, accessToken])
 

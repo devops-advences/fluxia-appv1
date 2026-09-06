@@ -1,11 +1,5 @@
-import sgMail from '@sendgrid/mail'
+import { Resend } from 'resend'
 import { createClient } from '@supabase/supabase-js'
-
-function sendgrid() {
-  if (!process.env.SENDGRID_API_KEY) return null
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY)
-  return sgMail
-}
 
 function serviceClient() {
   return createClient(
@@ -45,8 +39,7 @@ type NotifyInvitationParams = {
 }
 
 export async function notifyDeposit(p: NotifyDepositParams) {
-  const sg = sendgrid()
-  if (!sg) return
+  if (!process.env.RESEND_API_KEY) return
 
   const db = serviceClient()
 
@@ -63,7 +56,8 @@ export async function notifyDeposit(p: NotifyDepositParams) {
   const plural   = n > 1
   const listHtml = p.fileNames.map(f => `<li style="margin-bottom:4px;">${esc(f)}</li>`).join('')
 
-  await sg.send({
+  const resend = new Resend(process.env.RESEND_API_KEY)
+  await resend.emails.send({
     from:    'Fluxia <noreply@advences.io>',
     to:      emails,
     subject: `${esc(p.customerName)} a déposé ${n} document${plural ? 's' : ''}`,
@@ -93,8 +87,7 @@ export async function notifyDeposit(p: NotifyDepositParams) {
 }
 
 export async function notifyStatus(p: NotifyStatusParams) {
-  const sg = sendgrid()
-  if (!sg) return
+  if (!process.env.RESEND_API_KEY) return
 
   const db = serviceClient()
 
@@ -119,7 +112,8 @@ export async function notifyStatus(p: NotifyStatusParams) {
   const ctaColor = rejected ? '#DC2626' : '#059669'
   const cta      = rejected ? 'Déposer un nouveau document' : 'Voir mes documents'
 
-  await sg.send({
+  const resend = new Resend(process.env.RESEND_API_KEY)
+  await resend.emails.send({
     from:    'Fluxia <noreply@advences.io>',
     to:      emails,
     subject: rejected
@@ -156,8 +150,7 @@ type NotifyMessageParams = {
 }
 
 export async function notifyMessage(p: NotifyMessageParams) {
-  const sg = sendgrid()
-  if (!sg) return
+  if (!process.env.RESEND_API_KEY) return
 
   const db = serviceClient()
 
@@ -199,7 +192,8 @@ export async function notifyMessage(p: NotifyMessageParams) {
   const docLabel = p.documentName ? `<strong>${esc(p.documentName)}</strong>` : 'un document'
   const ctaUrl   = p.senderRole === 'customer' ? `${appUrl()}/documents` : `${appUrl()}/mes-documents`
 
-  await sg.send({
+  const resend = new Resend(process.env.RESEND_API_KEY)
+  await resend.emails.send({
     from:    'Fluxia <noreply@advences.io>',
     to:      emails,
     subject: `Nouveau message de ${esc(p.senderName)} sur Fluxia`,
@@ -227,15 +221,15 @@ export async function notifyMessage(p: NotifyMessageParams) {
 }
 
 export async function notifyInvitation(p: NotifyInvitationParams) {
-  const sg = sendgrid()
-  if (!sg) return
+  if (!process.env.RESEND_API_KEY) return
 
   const inviteUrl  = `${appUrl()}/invite/${p.token}`
   const contextLine = p.customerName
     ? `Vous avez été invité à accéder au portail client de <strong>${esc(p.customerName)}</strong> géré par <strong>${esc(p.firmName)}</strong>.`
     : `Vous avez été invité à accéder à l&apos;espace documentaire de <strong>${esc(p.firmName)}</strong>.`
 
-  await sg.send({
+  const resend = new Resend(process.env.RESEND_API_KEY)
+  await resend.emails.send({
     from:    'Fluxia <noreply@advences.io>',
     to:      p.email,
     subject: `${esc(p.firmName)} vous invite sur Fluxia`,

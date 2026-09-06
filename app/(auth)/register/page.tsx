@@ -103,22 +103,7 @@ export default function RegisterPage() {
 
     setLoading(true)
 
-    const cabinetData = {
-      firm_name:    firmName.trim(),
-      slug,
-      country_code: countryCode,
-      first_name:   firstName.trim(),
-      last_name:    lastName.trim(),
-    }
-
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/register/complete`,
-        data: cabinetData,
-      },
-    })
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password })
 
     if (signUpError || !signUpData.user) {
       setError(signUpError?.message ?? 'Erreur lors de la création du compte.')
@@ -126,20 +111,19 @@ export default function RegisterPage() {
       return
     }
 
-    // Si email confirmation requise, pas de session immediate -> la creation
-    // du cabinet se termine sur /register/complete apres le clic du lien recu par email
+    // Si email confirmation requise, pas de session immédiate
     if (!signUpData.session) {
-      setError('Compte créé. Vérifiez votre email pour confirmer votre compte et terminer la création du cabinet.')
+      setError('Vérifiez votre email pour confirmer votre compte.')
       setLoading(false)
       return
     }
 
     const { error: rpcError } = await supabase.rpc('create_cabinet', {
-      p_firm_name:    cabinetData.firm_name,
-      p_slug:         cabinetData.slug,
-      p_country_code: cabinetData.country_code,
-      p_first_name:   cabinetData.first_name,
-      p_last_name:    cabinetData.last_name,
+      p_firm_name:    firmName.trim(),
+      p_slug:         slug,
+      p_country_code: countryCode,
+      p_first_name:   firstName.trim(),
+      p_last_name:    lastName.trim(),
     })
 
     if (rpcError) {
