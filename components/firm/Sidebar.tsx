@@ -13,6 +13,7 @@ import {
   LogOut,
   UserCircle,
   Inbox,
+  ShieldCheck,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
@@ -38,6 +39,12 @@ const NAV = [
       { label: 'Documents clients', href: '/documents',  icon: FileText },
       { label: 'Livrables cabinet', href: '/livrables',  icon: FolderOutput },
       { label: 'Échéances fiscales', href: '/echeances', icon: CalendarClock },
+    ],
+  },
+  {
+    section: 'AUDIT',
+    items: [
+      { label: 'Audits', href: '/audits', icon: ShieldCheck },
     ],
   },
   {
