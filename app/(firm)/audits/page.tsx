@@ -14,6 +14,7 @@ type Finding = {
   id: string; object_name: string | null; object_ref: string
   message: string; message_override: string | null
   severity: Severity; status: string
+  detail_lines: { montant_total?: number } | null
   check_type: { name: string } | { name: string }[] | null
 }
 
@@ -39,6 +40,8 @@ export default function AuditsPage() {
   const [selected, setSelected] = useState('')
   const [dossierName, setDossierName] = useState('')
   const [loadingList, setLoadingList] = useState(true)
+  const [firmName, setFirmName] = useState('')
+  const [firmLogoUrl, setFirmLogoUrl] = useState<string | null>(null)
 
   const [run, setRun] = useState<Run | null>(null)
   const [findings, setFindings] = useState<Finding[]>([])
@@ -62,6 +65,12 @@ export default function AuditsPage() {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { setLoadingList(false); return }
+
+      const { data: ud } = await supabase.from('user_data').select('firm_id').eq('id', session.user.id).single()
+      if (ud?.firm_id) {
+        const { data: firm } = await supabase.from('firm').select('name, logo_url').eq('id', ud.firm_id).single()
+        if (firm) { setFirmName(firm.name); setFirmLogoUrl(firm.logo_url) }
+      }
 
       const [{ data: runs }, { data: findingsData }] = await Promise.all([
         supabase.from('audit_run').select('customer_id, created_at, customer:customer_id(name)').order('created_at', { ascending: false }),
@@ -112,7 +121,7 @@ export default function AuditsPage() {
       if (latestRun) {
         const { data: findingsData } = await supabase
           .from('audit_finding')
-          .select('id, object_name, object_ref, message, message_override, severity, status, check_type:check_type_id(name)')
+          .select('id, object_name, object_ref, message, message_override, severity, status, detail_lines, check_type:check_type_id(name)')
           .eq('customer_id', selected)
         if (findingsData) {
           const sorted = [...(findingsData as unknown as Finding[])].sort((a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity])
@@ -169,6 +178,17 @@ export default function AuditsPage() {
     setSavingStatus(null)
   }
 
+  function handlePrint() {
+    const original = document.title
+    if (run) {
+      const start = fmtDate(run.period_start).replace(/\//g, '-')
+      const end = fmtDate(run.period_end).replace(/\//g, '-')
+      document.title = `Audit ${dossierName} ${start}_${end}`
+    }
+    window.print()
+    setTimeout(() => { document.title = original }, 500)
+  }
+
   const openFindings = findings.filter(f => f.status === 'open')
   const visibleFindings = findings.filter(f => f.status === 'open' || f.status === 'ignored')
   const counts = { high: 0, medium: 0, low: 0 } as Record<Severity, number>
@@ -190,7 +210,22 @@ export default function AuditsPage() {
   const currentPage = Math.min(page, totalPages)
   const pageFindings = filteredFindings.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
-  function renderCard(f: Finding, printMode: boolean) {
+  function renderPrintEntry(f: Finding, index: number) {
+    const amount = f.detail_lines?.montant_total
+    const amountStr = typeof amount === 'number'
+      ? `${amount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € concernés`
+      : null
+    return (
+      <div key={f.id} className="mb-4" style={{ breakInside: 'avoid' }}>
+        <p className="text-sm font-semibold text-[#0F172A]">
+          {index + 1}. {f.object_name ?? f.object_ref}{amountStr ? ` — ${amountStr}` : ''}
+        </p>
+        <p className="text-sm text-[#0F172A] mt-1 leading-relaxed">{displayText(f)}</p>
+      </div>
+    )
+  }
+
+  function renderCard(f: Finding) {
     const ct = Array.isArray(f.check_type) ? f.check_type[0] : f.check_type
     const style = SEV_STYLE[f.severity]
     const isIgnored = f.status === 'ignored'
@@ -231,7 +266,7 @@ export default function AuditsPage() {
 
         <div className="flex items-center justify-between">
           <span className="text-xs text-[#94A3B8]">[{ct?.name ?? '—'}]</span>
-          {!printMode && !isEditing && (
+          {!isEditing && (
             <div className="flex items-center gap-3 print:hidden">
               <button onClick={() => { setEditingId(f.id); setEditText(displayText(f)) }}
                 className="text-xs text-[#64748B] hover:text-[#1D4ED8] flex items-center gap-1 transition-colors">
@@ -279,16 +314,21 @@ export default function AuditsPage() {
 
   return (
     <div className="max-w-3xl">
-      <div className="flex items-center gap-2 mb-6 print:hidden">
+      <div className="flex items-center gap-2 mb-4 print:hidden">
         <ShieldCheck size={18} strokeWidth={1.5} className="text-[#64748B]" />
         <h1 className="text-xl font-semibold text-[#0F172A]">Audits comptes fournisseurs</h1>
       </div>
 
       {/* En-tête visible uniquement à l'impression */}
-      <div className="hidden print:block mb-6">
-        <h1 className="text-xl font-semibold text-[#0F172A]">{dossierName} — Audit comptes fournisseurs</h1>
-        {run && <p className="text-xs text-[#64748B] mt-1">Période auditée : {fmtDate(run.period_start)} → {fmtDate(run.period_end)}</p>}
-        <p className="text-xs text-[#94A3B8]">Exporté le {fmtDate(new Date().toISOString())}</p>
+      <div className="hidden print:block mb-8">
+        {firmLogoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={firmLogoUrl} alt={firmName} className="max-h-10 object-contain mb-3" />
+        )}
+        <p className="text-xs text-[#64748B] mb-1">{firmName}</p>
+        <h1 className="text-lg font-bold text-[#0F172A]">Points à clarifier sur vos comptes fournisseurs</h1>
+        <p className="text-sm text-[#64748B] mt-1">{dossierName}</p>
+        {run && <p className="text-xs text-[#94A3B8] mt-0.5">Période du {fmtDate(run.period_start)} au {fmtDate(run.period_end)}</p>}
       </div>
 
       {loadingList ? (
@@ -301,21 +341,19 @@ export default function AuditsPage() {
         </div>
       ) : (
         <>
-          <div className="mb-5 flex items-end gap-3 print:hidden">
-            <div className="flex flex-col gap-1 max-w-xs">
-              <span className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider">Dossier</span>
-              <select value={selected} onChange={e => setSelected(e.target.value)}
-                className="text-sm px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#0F172A] outline-none focus:border-[#1D4ED8] focus:ring-1 focus:ring-[#1D4ED8] transition-colors">
-                {dossiers.map(d => (
-                  <option key={d.customer_id} value={d.customer_id}>
-                    {d.name}{d.open_count > 0 ? ` (${d.open_count})` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="mb-3 flex items-center gap-3 print:hidden">
+            <select value={selected} onChange={e => setSelected(e.target.value)}
+              className="text-sm px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#0F172A] outline-none focus:border-[#1D4ED8] focus:ring-1 focus:ring-[#1D4ED8] transition-colors">
+              {dossiers.map(d => (
+                <option key={d.customer_id} value={d.customer_id}>
+                  {d.name}{d.open_count > 0 ? ` (${d.open_count})` : ''}
+                </option>
+              ))}
+            </select>
+            {run && <span className="text-xs text-[#94A3B8]">Période : {fmtDate(run.period_start)} → {fmtDate(run.period_end)}</span>}
             {run && (
-              <button onClick={() => window.print()}
-                className="text-sm px-3 py-1.5 rounded-lg border border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC] flex items-center gap-1.5 transition-colors">
+              <button onClick={handlePrint}
+                className="ml-auto text-sm px-3 py-1.5 rounded-lg border border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC] flex items-center gap-1.5 transition-colors">
                 <Printer size={14} /> Exporter en PDF
               </button>
             )}
@@ -331,38 +369,36 @@ export default function AuditsPage() {
             </div>
           ) : (
             <>
-              <p className="text-xs text-[#94A3B8] mb-4 print:hidden">Période auditée : {fmtDate(run.period_start)} → {fmtDate(run.period_end)}</p>
+              <div className="flex items-center flex-wrap gap-x-4 gap-y-2 mb-3 print:hidden">
+                <span className="text-sm font-medium text-[#0F172A]">{openFindings.length} point{openFindings.length > 1 ? 's' : ''} à vérifier</span>
+                {counts.high   > 0 && <span className="text-sm">🔴 {counts.high} haute{counts.high > 1 ? 's' : ''}</span>}
+                {counts.medium > 0 && <span className="text-sm">🟡 {counts.medium} moyenne{counts.medium > 1 ? 's' : ''}</span>}
+                {counts.low    > 0 && <span className="text-sm">⚪ {counts.low} faible{counts.low > 1 ? 's' : ''}</span>}
 
-              <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 mb-6 flex items-center gap-4 text-sm print:hidden">
-                <span className="font-medium text-[#0F172A]">{openFindings.length} point{openFindings.length > 1 ? 's' : ''} à vérifier</span>
-                {counts.high   > 0 && <span>🔴 {counts.high} haute{counts.high > 1 ? 's' : ''}</span>}
-                {counts.medium > 0 && <span>🟡 {counts.medium} moyenne{counts.medium > 1 ? 's' : ''}</span>}
-                {counts.low    > 0 && <span>⚪ {counts.low} faible{counts.low > 1 ? 's' : ''}</span>}
-              </div>
-
-              {openFindings.length > 0 && (
-                <div className="flex items-center gap-3 mb-4 print:hidden">
-                  <div className="relative flex-1 max-w-xs">
-                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
-                    <input
-                      value={search}
-                      onChange={e => { setSearch(e.target.value); setPage(1) }}
-                      placeholder="Rechercher un tiers…"
-                      className="w-full text-sm pl-8 pr-2.5 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#0F172A] outline-none focus:border-[#1D4ED8] focus:ring-1 focus:ring-[#1D4ED8] transition-colors"
-                    />
+                {openFindings.length > 0 && (
+                  <div className="ml-auto flex items-center gap-3">
+                    <div className="relative">
+                      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
+                      <input
+                        value={search}
+                        onChange={e => { setSearch(e.target.value); setPage(1) }}
+                        placeholder="Rechercher un tiers…"
+                        className="text-sm pl-8 pr-2.5 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#0F172A] outline-none focus:border-[#1D4ED8] focus:ring-1 focus:ring-[#1D4ED8] transition-colors"
+                      />
+                    </div>
+                    <select
+                      value={severityFilter}
+                      onChange={e => { setSeverityFilter(e.target.value as 'all' | Severity); setPage(1) }}
+                      className="text-sm px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#0F172A] outline-none focus:border-[#1D4ED8] focus:ring-1 focus:ring-[#1D4ED8] transition-colors"
+                    >
+                      <option value="all">Toutes sévérités</option>
+                      <option value="high">Haute</option>
+                      <option value="medium">Moyenne</option>
+                      <option value="low">Faible</option>
+                    </select>
                   </div>
-                  <select
-                    value={severityFilter}
-                    onChange={e => { setSeverityFilter(e.target.value as 'all' | Severity); setPage(1) }}
-                    className="text-sm px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg bg-white text-[#0F172A] outline-none focus:border-[#1D4ED8] focus:ring-1 focus:ring-[#1D4ED8] transition-colors"
-                  >
-                    <option value="all">Toutes sévérités</option>
-                    <option value="high">Haute</option>
-                    <option value="medium">Moyenne</option>
-                    <option value="low">Faible</option>
-                  </select>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Vue interactive (écran) */}
               <div className="print:hidden">
@@ -373,7 +409,7 @@ export default function AuditsPage() {
                 ) : (
                   <>
                     <div className="flex flex-col gap-3">
-                      {pageFindings.map(f => renderCard(f, false))}
+                      {pageFindings.map(f => renderCard(f))}
                     </div>
 
                     {totalPages > 1 && (
@@ -403,9 +439,9 @@ export default function AuditsPage() {
                 )}
               </div>
 
-              {/* Vue impression : liste complète, non paginée, jamais les ignorés */}
-              <div className="hidden print:flex print:flex-col print:gap-3">
-                {printableFindings.map(f => renderCard(f, true))}
+              {/* Vue impression : liste numérotée sobre, non paginée, jamais les ignorés */}
+              <div className="hidden print:block">
+                {printableFindings.map((f, i) => renderPrintEntry(f, i))}
               </div>
             </>
           )}
