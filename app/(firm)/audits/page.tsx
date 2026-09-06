@@ -231,13 +231,19 @@ export default function AuditsPage() {
     const isIgnored = f.status === 'ignored'
     const isEditing = editingId === f.id
     const isIgnoring = ignoringId === f.id
+    const amount = f.detail_lines?.montant_total
+    const amountStr = typeof amount === 'number'
+      ? `${amount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € concernés`
+      : null
     return (
       <div key={f.id} className={`bg-white border rounded-xl p-4 ${isIgnored ? 'border-[#E2E8F0] opacity-60' : 'border-[#E2E8F0]'}`}>
         <div className="flex items-center gap-2 mb-1.5">
           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${style.badge}`}>
             {style.dot} {style.label}
           </span>
-          <span className="text-sm font-semibold text-[#0F172A]">{f.object_name ?? f.object_ref}</span>
+          <span className="text-sm font-semibold text-[#0F172A]">
+            {f.object_name ?? f.object_ref}{amountStr ? ` — ${amountStr}` : ''}
+          </span>
           {isIgnored && <span className="text-[10px] text-[#94A3B8] uppercase tracking-wider">Ignoré</span>}
         </div>
 
