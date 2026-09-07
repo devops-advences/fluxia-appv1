@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ShieldCheck, Search, Pencil, Printer } from 'lucide-react'
+import { ShieldCheck, Search, Pencil, Printer, Mail } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
 
 type Severity = 'high' | 'medium' | 'low'
@@ -46,6 +46,9 @@ export default function AuditsPage() {
   const [run, setRun] = useState<Run | null>(null)
   const [findings, setFindings] = useState<Finding[]>([])
   const [loadingDetail, setLoadingDetail] = useState(false)
+  const [ignoreComments, setIgnoreComments] = useState<Record<string, string>>({})
+  const [sendingReport, setSendingReport] = useState(false)
+  const [sendResult, setSendResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   const [search, setSearch] = useState('')
   const [severityFilter, setSeverityFilter] = useState<'all' | Severity>('all')
@@ -126,6 +129,23 @@ export default function AuditsPage() {
         if (findingsData) {
           const sorted = [...(findingsData as unknown as Finding[])].sort((a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity])
           setFindings(sorted)
+
+          const ignoredIds = sorted.filter(f => f.status === 'ignored').map(f => f.id)
+          if (ignoredIds.length > 0) {
+            const { data: events } = await supabase
+              .from('audit_finding_event')
+              .select('finding_id, comment, created_at')
+              .in('finding_id', ignoredIds)
+              .eq('event_type', 'ignored')
+              .order('created_at', { ascending: false })
+            const map: Record<string, string> = {}
+            for (const e of (events ?? []) as { finding_id: string; comment: string | null }[]) {
+              if (!(e.finding_id in map) && e.comment) map[e.finding_id] = e.comment
+            }
+            setIgnoreComments(map)
+          } else {
+            setIgnoreComments({})
+          }
         } else {
           setFindings([])
         }
@@ -159,6 +179,7 @@ export default function AuditsPage() {
         finding_id: id, user_id: session.user.id, event_type: 'ignored', comment: ignoreComment.trim(),
       })
       setFindings(prev => prev.map(f => f.id === id ? { ...f, status: 'ignored' } : f))
+      setIgnoreComments(prev => ({ ...prev, [id]: ignoreComment.trim() }))
       setIgnoringId(null); setIgnoreComment('')
     }
     setSavingStatus(null)
@@ -187,6 +208,20 @@ export default function AuditsPage() {
     }
     window.print()
     setTimeout(() => { document.title = original }, 500)
+  }
+
+  async function handleSendToClient() {
+    setSendingReport(true); setSendResult(null)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { setSendingReport(false); return }
+    const res = await fetch('/api/audit/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ customerId: selected }),
+    })
+    const data = await res.json()
+    setSendResult(res.ok ? { ok: true, message: 'Rapport envoyé.' } : { ok: false, message: data.error ?? 'Erreur' })
+    setSendingReport(false)
   }
 
   const openFindings = findings.filter(f => f.status === 'open')
@@ -244,8 +279,14 @@ export default function AuditsPage() {
           <span className="text-sm font-semibold text-[#0F172A]">
             {f.object_name ?? f.object_ref}{amountStr ? ` — ${amountStr}` : ''}
           </span>
-          {isIgnored && <span className="text-[10px] text-[#94A3B8] uppercase tracking-wider">Ignoré</span>}
+          <span className="text-[10px] text-[#94A3B8] uppercase tracking-wider ml-auto">
+            {f.status === 'open' ? 'Ouvert' : f.status === 'ignored' ? 'Ignoré' : 'Résolu'}
+          </span>
         </div>
+
+        {isIgnored && ignoreComments[f.id] && (
+          <p className="text-xs text-[#94A3B8] italic mb-1.5">Motif : {ignoreComments[f.id]}</p>
+        )}
 
         {isEditing ? (
           <div className="mb-1.5 flex flex-col gap-2 print:hidden">
@@ -319,22 +360,15 @@ export default function AuditsPage() {
   }
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-3xl print:max-w-none">
+      <style>{`
+        @media print {
+          @page { margin: 1.5cm 2cm; }
+        }
+      `}</style>
       <div className="flex items-center gap-2 mb-4 print:hidden">
         <ShieldCheck size={18} strokeWidth={1.5} className="text-[#64748B]" />
         <h1 className="text-xl font-semibold text-[#0F172A]">Audits comptes fournisseurs</h1>
-      </div>
-
-      {/* En-tête visible uniquement à l'impression */}
-      <div className="hidden print:block mb-8">
-        {firmLogoUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={firmLogoUrl} alt={firmName} className="max-h-10 object-contain mb-3" />
-        )}
-        <p className="text-xs text-[#64748B] mb-1">{firmName}</p>
-        <h1 className="text-lg font-bold text-[#0F172A]">Points à clarifier sur vos comptes fournisseurs</h1>
-        <p className="text-sm text-[#64748B] mt-1">{dossierName}</p>
-        {run && <p className="text-xs text-[#94A3B8] mt-0.5">Période du {fmtDate(run.period_start)} au {fmtDate(run.period_end)}</p>}
       </div>
 
       {loadingList ? (
@@ -363,7 +397,16 @@ export default function AuditsPage() {
                 <Printer size={14} /> Exporter en PDF
               </button>
             )}
+            {run && (
+              <button onClick={handleSendToClient} disabled={sendingReport}
+                className="text-sm px-3 py-1.5 rounded-lg border border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC] flex items-center gap-1.5 transition-colors disabled:opacity-50">
+                <Mail size={14} /> {sendingReport ? 'Envoi…' : 'Envoyer au client'}
+              </button>
+            )}
           </div>
+          {sendResult && (
+            <p className={`text-xs mb-3 print:hidden ${sendResult.ok ? 'text-[#059669]' : 'text-[#DC2626]'}`}>{sendResult.message}</p>
+          )}
 
           {loadingDetail ? (
             <div className="flex items-center justify-center h-32 print:hidden">
@@ -445,10 +488,34 @@ export default function AuditsPage() {
                 )}
               </div>
 
-              {/* Vue impression : liste numérotée sobre, non paginée, jamais les ignorés */}
-              <div className="hidden print:block">
-                {printableFindings.map((f, i) => renderPrintEntry(f, i))}
-              </div>
+              {/* Vue impression : table avec thead — seul mécanisme fiable pour répéter le logo sur chaque page imprimée */}
+              <table className="hidden print:table w-full" style={{ borderCollapse: 'collapse' }}>
+                {firmLogoUrl && (
+                  <thead>
+                    <tr>
+                      <td style={{ paddingTop: '8px', paddingBottom: '10px', borderBottom: '1px solid #E2E8F0' }}>
+                        <div className="flex items-center gap-2">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={firmLogoUrl} alt={firmName} style={{ maxHeight: '24px', objectFit: 'contain' }} />
+                          <span className="text-xs text-[#94A3B8]">{firmName} — {dossierName}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  </thead>
+                )}
+                <tbody>
+                  <tr>
+                    <td className="text-center" style={{ paddingBottom: '2rem' }}>
+                      <h1 className="text-2xl font-bold text-[#0F172A]">Points à clarifier sur vos comptes fournisseurs</h1>
+                      <p className="text-sm text-[#64748B] mt-2">{dossierName}</p>
+                      {run && <p className="text-xs text-[#94A3B8] mt-0.5">Période du {fmtDate(run.period_start)} au {fmtDate(run.period_end)}</p>}
+                    </td>
+                  </tr>
+                  {printableFindings.map((f, i) => (
+                    <tr key={f.id}><td>{renderPrintEntry(f, i)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
             </>
           )}
         </>

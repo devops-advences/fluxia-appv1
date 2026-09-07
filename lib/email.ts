@@ -38,6 +38,17 @@ type NotifyInvitationParams = {
   token:        string
 }
 
+type SendAuditReportParams = {
+  firmName:     string
+  firmLogoUrl:  string | null
+  firmReplyTo:  string | null
+  customerName: string
+  customerEmail: string
+  periodStart:  string
+  periodEnd:    string
+  findings:     { objectName: string; message: string; severity: 'high' | 'medium' | 'low' }[]
+}
+
 export async function notifyDeposit(p: NotifyDepositParams) {
   if (!process.env.RESEND_API_KEY) return
 
@@ -214,6 +225,50 @@ export async function notifyMessage(p: NotifyMessageParams) {
         </a>
         <p style="font-size:12px;color:#94A3B8;margin-top:24px;">
           Vous recevez cet email car vous êtes lié à cet espace documentaire sur Fluxia.
+        </p>
+      </div>
+    `,
+  })
+}
+
+function fmtDate(d: string) {
+  try { return new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) } catch { return d }
+}
+
+const SEV_COLOR: Record<'high' | 'medium' | 'low', string> = { high: '#DC2626', medium: '#D97706', low: '#94A3B8' }
+
+export async function sendAuditReport(p: SendAuditReportParams) {
+  if (!process.env.RESEND_API_KEY) return
+
+  const listHtml = p.findings.map(f => `
+    <div style="margin-bottom:16px;">
+      <p style="font-size:13px;font-weight:600;color:#0F172A;margin:0 0 4px;">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${SEV_COLOR[f.severity]};margin-right:6px;"></span>
+        ${esc(f.objectName)}
+      </p>
+      <p style="font-size:13px;color:#0F172A;margin:0 0 0 14px;">${esc(f.message)}</p>
+    </div>
+  `).join('')
+
+  const resend = new Resend(process.env.RESEND_API_KEY)
+  await resend.emails.send({
+    from:    `${esc(p.firmName)} (via FluxIA) <noreply@advences.io>`,
+    ...(p.firmReplyTo ? { replyTo: p.firmReplyTo } : {}),
+    to:      p.customerEmail,
+    subject: `${esc(p.firmName)} — Points à clarifier sur vos comptes fournisseurs`,
+    html: `
+      <div style="font-family:Inter,sans-serif;max-width:560px;margin:0 auto;padding:32px;background:#fff;">
+        <div style="margin-bottom:20px;">
+          ${p.firmLogoUrl ? `<img src="${esc(p.firmLogoUrl)}" alt="${esc(p.firmName)}" style="max-height:32px;object-fit:contain;" />` : `<span style="font-size:16px;font-weight:700;color:#0F172A;">${esc(p.firmName)}</span>`}
+        </div>
+        <h1 style="font-size:18px;font-weight:700;color:#0F172A;margin:0 0 4px;">Points à clarifier sur vos comptes fournisseurs</h1>
+        <p style="font-size:13px;color:#64748B;margin:0 0 4px;">${esc(p.customerName)}</p>
+        <p style="font-size:12px;color:#94A3B8;margin:0 0 24px;">Période du ${fmtDate(p.periodStart)} au ${fmtDate(p.periodEnd)}</p>
+        <div style="border-top:1px solid #E2E8F0;padding-top:20px;">
+          ${listHtml}
+        </div>
+        <p style="font-size:12px;color:#94A3B8;margin-top:24px;">
+          Ce rapport vous est transmis par ${esc(p.firmName)}. Répondez à cet email pour les contacter directement.
         </p>
       </div>
     `,
