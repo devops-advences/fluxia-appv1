@@ -2,6 +2,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabaseService'
 import { sendAuditReport } from '@/lib/email'
 
+type DetailLine = { date: string; type?: string; tiers?: string; montant?: number; debit?: number; credit?: number }
+
+function fmtDateFr(d: string) {
+  try { return new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) } catch { return d }
+}
+
+function fmtEur(n: number) {
+  return `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+}
+
+function formatDetailLine(l: DetailLine): string {
+  const date = fmtDateFr(l.date)
+  if (l.type) return `${date} : ${l.type} de ${fmtEur(l.montant ?? 0)}${l.tiers ? ` (${l.tiers})` : ''}`
+  const debit = l.debit ?? 0
+  const credit = l.credit ?? 0
+  return `${date} : ${debit > 0 ? 'Débit' : 'Crédit'} de ${fmtEur(debit > 0 ? debit : credit)}`
+}
+
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
@@ -38,7 +56,7 @@ export async function POST(req: NextRequest) {
 
   const { data: findings } = await service
     .from('audit_finding')
-    .select('object_name, object_ref, message, message_override, severity')
+    .select('object_name, object_ref, message, message_override, severity, detail_lines')
     .eq('customer_id', customerId).eq('firm_id', ud.firm_id).eq('status', 'open')
   if (!findings || findings.length === 0) return NextResponse.json({ error: 'Aucun point ouvert à envoyer' }, { status: 400 })
 
@@ -55,6 +73,7 @@ export async function POST(req: NextRequest) {
         objectName: f.object_name ?? f.object_ref,
         message:    f.message_override ?? f.message,
         severity:   f.severity,
+        detailLines: (f.detail_lines?.lines as DetailLine[] | undefined)?.map(formatDetailLine),
       })),
     })
   } catch (err) {

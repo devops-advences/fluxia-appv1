@@ -10,29 +10,49 @@ type DossierOption = { customer_id: string; name: string; open_count: number }
 
 type Run = { id: string; period_start: string; period_end: string; status: string }
 
+type DetailLine = { date: string; type?: string; tiers?: string; montant?: number; debit?: number; credit?: number }
+
 type Finding = {
   id: string; object_name: string | null; object_ref: string
   message: string; message_override: string | null
   severity: Severity; status: string
-  detail_lines: { montant_total?: number } | null
+  detail_lines: { montant_total?: number; lines?: DetailLine[] } | null
   check_type: { name: string } | { name: string }[] | null
 }
 
 const SEV_RANK: Record<Severity, number> = { high: 3, medium: 2, low: 1 }
 
-const SEV_STYLE: Record<Severity, { badge: string; dot: string; label: string }> = {
-  high:   { badge: 'bg-[#FEF2F2] text-[#DC2626] border-[#FECACA]', dot: '🔴', label: 'HAUTE' },
-  medium: { badge: 'bg-[#FFFBEB] text-[#D97706] border-[#FDE68A]', dot: '🟡', label: 'MOYENNE' },
-  low:    { badge: 'bg-[#F8FAFC] text-[#64748B] border-[#E2E8F0]', dot: '⚪', label: 'FAIBLE' },
+const SEV_STYLE: Record<Severity, { badge: string; text: string; label: string }> = {
+  high:   { badge: 'bg-[#FEF2F2] text-[#DC2626] border-[#FECACA]', text: '#DC2626', label: 'HAUTE' },
+  medium: { badge: 'bg-[#FFFBEB] text-[#D97706] border-[#FDE68A]', text: '#D97706', label: 'MOYENNE' },
+  low:    { badge: 'bg-[#F8FAFC] text-[#64748B] border-[#E2E8F0]', text: '#64748B', label: 'FAIBLE' },
 }
 
 function fmtDate(d: string | null) {
-  if (!d) return '—'
+  if (!d) return '-'
   try { return new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) } catch { return d }
 }
 
 function displayText(f: Finding) {
   return f.message_override ?? f.message
+}
+
+function fmtEur(n: number) {
+  return `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+}
+
+function formatDetailLine(l: DetailLine): string {
+  const date = fmtDate(l.date)
+  if (l.type) {
+    // format K SHOP : type + tiers connus
+    return `${date} : ${l.type} de ${fmtEur(l.montant ?? 0)}${l.tiers ? ` (${l.tiers})` : ''}`
+  }
+  // format FootKorner : juste débit/crédit
+  const debit = l.debit ?? 0
+  const credit = l.credit ?? 0
+  const montant = debit > 0 ? debit : credit
+  const label = debit > 0 ? 'Débit' : 'Crédit'
+  return `${date} : ${label} de ${fmtEur(montant)}`
 }
 
 export default function AuditsPage() {
@@ -85,7 +105,7 @@ export default function AuditsPage() {
       for (const r of (runs ?? []) as RunRow[]) {
         if (seen.has(r.customer_id)) continue
         const cust = Array.isArray(r.customer) ? r.customer[0] : r.customer
-        seen.set(r.customer_id, cust?.name ?? '—')
+        seen.set(r.customer_id, cust?.name ?? '-')
       }
 
       const openCounts = new Map<string, number>()
@@ -250,12 +270,20 @@ export default function AuditsPage() {
     const amountStr = typeof amount === 'number'
       ? `${amount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € concernés`
       : null
+    const lines = f.detail_lines?.lines
     return (
       <div key={f.id} className="mb-4" style={{ breakInside: 'avoid' }}>
         <p className="text-sm font-semibold text-[#0F172A]">
-          {index + 1}. {f.object_name ?? f.object_ref}{amountStr ? ` — ${amountStr}` : ''}
+          {index + 1}. {f.object_name ?? f.object_ref}{amountStr ? ` - ${amountStr}` : ''}
         </p>
         <p className="text-sm text-[#0F172A] mt-1 leading-relaxed">{displayText(f)}</p>
+        {lines && lines.length > 0 && (
+          <ul className="mt-1.5 pl-4" style={{ listStyleType: 'disc' }}>
+            {lines.map((l, i) => (
+              <li key={i} className="text-xs text-[#0F172A]">{formatDetailLine(l)}</li>
+            ))}
+          </ul>
+        )}
       </div>
     )
   }
@@ -274,10 +302,10 @@ export default function AuditsPage() {
       <div key={f.id} className={`bg-white border rounded-xl p-4 ${isIgnored ? 'border-[#E2E8F0] opacity-60' : 'border-[#E2E8F0]'}`}>
         <div className="flex items-center gap-2 mb-1.5">
           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${style.badge}`}>
-            {style.dot} {style.label}
+            {style.label}
           </span>
           <span className="text-sm font-semibold text-[#0F172A]">
-            {f.object_name ?? f.object_ref}{amountStr ? ` — ${amountStr}` : ''}
+            {f.object_name ?? f.object_ref}{amountStr ? ` - ${amountStr}` : ''}
           </span>
           <span className="text-[10px] text-[#94A3B8] uppercase tracking-wider ml-auto">
             {f.status === 'open' ? 'Ouvert' : f.status === 'ignored' ? 'Ignoré' : 'Résolu'}
@@ -308,11 +336,20 @@ export default function AuditsPage() {
             </div>
           </div>
         ) : (
-          <p className="text-sm text-[#0F172A] mb-1.5">{displayText(f)}</p>
+          <>
+            <p className="text-sm text-[#0F172A] mb-1.5">{displayText(f)}</p>
+            {f.detail_lines?.lines && f.detail_lines.lines.length > 0 && (
+              <ul className="mb-1.5 pl-4" style={{ listStyleType: 'disc' }}>
+                {f.detail_lines.lines.map((l, i) => (
+                  <li key={i} className="text-xs text-[#64748B]">{formatDetailLine(l)}</li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
 
         <div className="flex items-center justify-between">
-          <span className="text-xs text-[#94A3B8]">[{ct?.name ?? '—'}]</span>
+          <span className="text-xs text-[#94A3B8]">[{ct?.name ?? '-'}]</span>
           {!isEditing && (
             <div className="flex items-center gap-3 print:hidden">
               <button onClick={() => { setEditingId(f.id); setEditText(displayText(f)) }}
@@ -420,9 +457,9 @@ export default function AuditsPage() {
             <>
               <div className="flex items-center flex-wrap gap-x-4 gap-y-2 mb-3 print:hidden">
                 <span className="text-sm font-medium text-[#0F172A]">{openFindings.length} point{openFindings.length > 1 ? 's' : ''} à vérifier</span>
-                {counts.high   > 0 && <span className="text-sm">🔴 {counts.high} haute{counts.high > 1 ? 's' : ''}</span>}
-                {counts.medium > 0 && <span className="text-sm">🟡 {counts.medium} moyenne{counts.medium > 1 ? 's' : ''}</span>}
-                {counts.low    > 0 && <span className="text-sm">⚪ {counts.low} faible{counts.low > 1 ? 's' : ''}</span>}
+                {counts.high   > 0 && <span className="text-sm" style={{ color: SEV_STYLE.high.text }}>{counts.high} haute{counts.high > 1 ? 's' : ''}</span>}
+                {counts.medium > 0 && <span className="text-sm" style={{ color: SEV_STYLE.medium.text }}>{counts.medium} moyenne{counts.medium > 1 ? 's' : ''}</span>}
+                {counts.low    > 0 && <span className="text-sm" style={{ color: SEV_STYLE.low.text }}>{counts.low} faible{counts.low > 1 ? 's' : ''}</span>}
 
                 {openFindings.length > 0 && (
                   <div className="ml-auto flex items-center gap-3">
@@ -464,7 +501,7 @@ export default function AuditsPage() {
                     {totalPages > 1 && (
                       <div className="flex items-center justify-between mt-4 text-sm">
                         <span className="text-xs text-[#94A3B8]">
-                          {filteredFindings.length} résultat{filteredFindings.length > 1 ? 's' : ''} — page {currentPage}/{totalPages}
+                          {filteredFindings.length} résultat{filteredFindings.length > 1 ? 's' : ''} - page {currentPage}/{totalPages}
                         </span>
                         <div className="flex gap-2">
                           <button
@@ -488,7 +525,7 @@ export default function AuditsPage() {
                 )}
               </div>
 
-              {/* Vue impression : table avec thead — seul mécanisme fiable pour répéter le logo sur chaque page imprimée */}
+              {/* Vue impression : table avec thead - seul mécanisme fiable pour répéter le logo sur chaque page imprimée */}
               <table className="hidden print:table w-full" style={{ borderCollapse: 'collapse' }}>
                 {firmLogoUrl && (
                   <thead>
@@ -497,7 +534,7 @@ export default function AuditsPage() {
                         <div className="flex items-center gap-2">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={firmLogoUrl} alt={firmName} style={{ maxHeight: '24px', objectFit: 'contain' }} />
-                          <span className="text-xs text-[#94A3B8]">{firmName} — {dossierName}</span>
+                          <span className="text-xs text-[#94A3B8]">{firmName} - {dossierName}</span>
                         </div>
                       </td>
                     </tr>

@@ -46,7 +46,7 @@ type SendAuditReportParams = {
   customerEmail: string
   periodStart:  string
   periodEnd:    string
-  findings:     { objectName: string; message: string; severity: 'high' | 'medium' | 'low' }[]
+  findings:     { objectName: string; message: string; severity: 'high' | 'medium' | 'low'; detailLines?: string[] }[]
 }
 
 export async function notifyDeposit(p: NotifyDepositParams) {
@@ -235,18 +235,20 @@ function fmtDate(d: string) {
   try { return new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) } catch { return d }
 }
 
-const SEV_COLOR: Record<'high' | 'medium' | 'low', string> = { high: '#DC2626', medium: '#D97706', low: '#94A3B8' }
-
 export async function sendAuditReport(p: SendAuditReportParams) {
   if (!process.env.RESEND_API_KEY) return
 
   const listHtml = p.findings.map(f => `
     <div style="margin-bottom:16px;">
-      <p style="font-size:13px;font-weight:600;color:#0F172A;margin:0 0 4px;">
-        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${SEV_COLOR[f.severity]};margin-right:6px;"></span>
+      <p style="font-size:13px;font-weight:600;margin:0 0 4px;color:#0F172A;">
         ${esc(f.objectName)}
       </p>
       <p style="font-size:13px;color:#0F172A;margin:0 0 0 14px;">${esc(f.message)}</p>
+      ${f.detailLines && f.detailLines.length > 0 ? `
+        <ul style="margin:6px 0 0 14px;padding:0 0 0 16px;">
+          ${f.detailLines.map(l => `<li style="font-size:12px;color:#64748B;margin-bottom:2px;">${esc(l)}</li>`).join('')}
+        </ul>
+      ` : ''}
     </div>
   `).join('')
 
@@ -255,21 +257,20 @@ export async function sendAuditReport(p: SendAuditReportParams) {
     from:    `${esc(p.firmName)} (via FluxIA) <noreply@advences.io>`,
     ...(p.firmReplyTo ? { replyTo: p.firmReplyTo } : {}),
     to:      p.customerEmail,
-    subject: `${esc(p.firmName)} — Points à clarifier sur vos comptes fournisseurs`,
+    subject: `${esc(p.customerName)} - Points à clarifier sur vos comptes fournisseurs`,
     html: `
       <div style="font-family:Inter,sans-serif;max-width:560px;margin:0 auto;padding:32px;background:#fff;">
-        <div style="margin-bottom:20px;">
-          ${p.firmLogoUrl ? `<img src="${esc(p.firmLogoUrl)}" alt="${esc(p.firmName)}" style="max-height:32px;object-fit:contain;" />` : `<span style="font-size:16px;font-weight:700;color:#0F172A;">${esc(p.firmName)}</span>`}
-        </div>
         <h1 style="font-size:18px;font-weight:700;color:#0F172A;margin:0 0 4px;">Points à clarifier sur vos comptes fournisseurs</h1>
         <p style="font-size:13px;color:#64748B;margin:0 0 4px;">${esc(p.customerName)}</p>
-        <p style="font-size:12px;color:#94A3B8;margin:0 0 24px;">Période du ${fmtDate(p.periodStart)} au ${fmtDate(p.periodEnd)}</p>
+        <p style="font-size:12px;color:#94A3B8;margin:0 0 20px;">Période du ${fmtDate(p.periodStart)} au ${fmtDate(p.periodEnd)}</p>
+        <p style="font-size:13px;color:#0F172A;margin:0 0 24px;line-height:1.6;">
+          Bonjour,<br/><br/>
+          Nous avons passé en revue vos comptes fournisseurs sur la période ci-dessus.
+          Les points ci-dessous n'ont pas encore été rapprochés - pouvez-vous confirmer que chaque montant est justifié ?
+        </p>
         <div style="border-top:1px solid #E2E8F0;padding-top:20px;">
           ${listHtml}
         </div>
-        <p style="font-size:12px;color:#94A3B8;margin-top:24px;">
-          Ce rapport vous est transmis par ${esc(p.firmName)}. Répondez à cet email pour les contacter directement.
-        </p>
       </div>
     `,
   })
